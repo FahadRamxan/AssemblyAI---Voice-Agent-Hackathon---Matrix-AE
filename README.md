@@ -4,14 +4,14 @@
 
 # ◉ Raabta Live
 
-### A real-time voice agent you can talk over — built on AssemblyAI Universal-Streaming
+### A multi-tenant voice-AI platform — built on AssemblyAI Universal-Streaming
 
-**Talk to it. Interrupt it. Read along.** Browser mic → AssemblyAI realtime STT → LLM → streaming TTS,
-with true barge-in and a live read-along transcript.
+**Sign up → build your own voice agent → drop one line of HTML on any site → watch the calls,
+transcripts and analytics roll in.** Real-time, interruptible, bilingual voice agents you can talk over.
 
-`AssemblyAI Universal-Streaming` · `TypeScript` · `Node.js` · `Web Audio API` · `WebSocket`
+`AssemblyAI Universal-Streaming` · `TypeScript` · `Node.js` · `SQLite` · `Web Audio API` · `WebSocket`
 
-_Submission for the lablab.ai × AssemblyAI “Build voice AI agents on AssemblyAI” hackathon — by **Matrix AE**._
+_Submission for the lablab.ai × AssemblyAI "Build voice AI agents on AssemblyAI" hackathon — by **Matrix AE**._
 
 </div>
 
@@ -19,62 +19,87 @@ _Submission for the lablab.ai × AssemblyAI “Build voice AI agents on Assembly
 
 ## What it is
 
-Raabta Live is a browser voice agent. You click **Start call**, speak naturally, and the agent answers
-out loud — and crucially, **you can talk over it to cut it off**, just like a real phone call. The whole
-conversation streams onto the screen as it happens (interim words in grey, finalized turns as bubbles),
-so anyone watching can *see* the speech recognition working in real time.
+Most "voice agent" demos are a single bot on one page. **Raabta Live is the whole product around it** —
+a small but complete SaaS:
 
-It’s built on **[AssemblyAI Universal-Streaming](https://www.assemblyai.com/docs/speech-to-text/universal-streaming)**
-(the Path-2 challenge track): caller audio is streamed to AssemblyAI over a WebSocket and comes back as
-partial-then-final transcripts, with AssemblyAI’s semantic **end-of-turn detection** deciding the moment
-the caller has finished speaking. That signal is what makes the turn-taking feel human.
+1. **Sign up** and you instantly get a workspace with your own agent + a publishable embed key.
+2. **Customize the agent** in a dashboard — persona, greeting, voice, keyterms, language.
+3. **Embed it anywhere** with one line: `<script src=".../embed.js" data-agent-key="pk_live_…" async></script>`.
+   A floating "Talk" button appears on your site; visitors have a real-time voice conversation.
+4. **Watch it work** — every call is recorded as a speaker-attributed transcript with live analytics
+   (calls, avg duration, turns, **barge-in rate**, reply latency p50/p95, language split).
 
-## Why it’s different
+The voice loop itself is built on **[AssemblyAI Universal-Streaming](https://www.assemblyai.com/docs/speech-to-text/universal-streaming)**
+(the Path-2 track): the caller's audio streams to AssemblyAI over a WebSocket, and its semantic
+**end-of-turn detection** decides the moment the caller has finished — which is what makes the
+turn-taking (and the barge-in) feel human.
 
-- **Barge-in that actually works.** The moment you start speaking over the agent, the in-flight LLM and
-  TTS are aborted and the browser flushes queued audio — the agent goes quiet instantly. This is the
-  single hardest thing to get right in a voice agent, and it’s the headline here.
-- **Read-along transcript.** Partials stream in as you talk; finals commit as bubbles; the agent’s reply
-  streams in sentence-by-sentence. The UI makes the realtime STT legible — no faked demo.
-- **Sentence-streamed replies → low latency.** The LLM reply is cut into sentences and sent to TTS the
-  moment each one completes, so you hear the first sentence while the model is still writing the rest.
-- **Bilingual brain & voice (Arabic ⇄ English).** The agent mirrors the caller’s language and speaks
-  natural Gulf Arabic or English; the transcript flips to RTL for Arabic. (See the honest note below on
-  where Arabic lives in the pipeline today.)
-- **Provider-agnostic.** OpenAI **or** Gemini for the brain; ElevenLabs **or** Cartesia for the voice —
-  chosen automatically from whichever key is present.
+## The 60-second demo
+
+> Open `/dashboard` → **Create a workspace** → you land on a live analytics home. Open **Embed & keys**,
+> copy your snippet, click **Preview on a demo site** — a third-party page with your agent's Talk button.
+> Click it, allow the mic, and **talk**. Try interrupting mid-sentence. Go back to **Calls** and read the
+> transcript of the call you just made.
+
+Every number on that dashboard came from a call your agent actually handled — nothing seeded.
+
+## Why it's different
+
+- **Barge-in that actually works.** Start talking over the agent and the in-flight LLM + TTS abort
+  instantly and the browser flushes queued audio — the hardest thing to get right in a voice agent, and
+  now a **measured metric** (barge-in rate) on every tenant's dashboard.
+- **Multi-tenant by construction.** Every row is scoped to a tenant; the data layer bakes `WHERE tenant_id`
+  into every query, so one customer can never see another's calls — enforced by a build-failing isolation test.
+- **Embed anywhere.** A publishable `pk_live_` key (safe in a browser, like a Stripe key) drops your agent
+  onto any website. It can *only* start a voice call for its agent — never touch the dashboard or another tenant.
+- **Read-along transcript.** Partials stream as you speak; the agent's reply streams in sentence-by-sentence.
+  The UI makes the real-time STT legible — no faked demo.
+- **Bilingual brain & voice (Arabic ⇄ English).** The agent mirrors the caller's language and speaks natural
+  Gulf Arabic or English (transcript flips to RTL). _(See the honest note on Arabic below.)_
+- **Zero-infra.** One SQLite file, one process. `npm install && npm start` — no external database.
 
 ## Verified working (live)
 
-The full pipeline is proven end-to-end against the real APIs by [`scripts/smoke.mjs`](scripts/smoke.mjs),
-which streams a real 16 kHz clip through the server exactly like the browser does:
+The full multi-tenant pipeline is proven end-to-end against the real APIs by
+[`scripts/smoke.mjs`](scripts/smoke.mjs), which resolves an embed key and streams a real 16 kHz clip
+through `/ws?key=…` exactly like the browser widget does:
 
 ```
-FINAL: Can you book me a flight from New York to Boston?
-agent: I am sorry, but I cannot book flights.
-agent: I can help you schedule an appointment or take a message for a callback.
-reply TTS: 103249 bytes
+using demo embed key pk_live_…
+ready (sttLive=true, ttsRate=24000)
+  agent: Thanks for calling Raabta. How can I help you today?
+  FINAL: Can you book me a flight from New York to Boston?
+  agent: I'm sorry, but we don't handle flight bookings.
 PASS — STT -> LLM -> TTS round-trip works.
 ```
 
-AssemblyAI partials appear **as you speak** (~sub-second), and a spoken reply comes back in ~2 seconds.
+Plus **32 hermetic unit tests** (`npm test`), including a cross-tenant isolation tripwire that fails the
+build if tenant A could ever read tenant B's data.
 
 ## Architecture
 
 ```
- Browser (public/)                         Node backend (src/)                 External APIs
- ┌───────────────────┐   one WebSocket    ┌────────────────────┐
- │ mic → AudioWorklet │ ── binary PCM16 ─▶ │  VoiceSession      │ ── PCM ─▶ ◎ AssemblyAI Universal-Streaming
- │  (16 kHz downsamp) │                    │   ├ STT bridge     │ ◀ Turn ── (partial / final + end-of-turn)
- │                    │ ◀── JSON  ──────── │   ├ LLM (stream)   │ ──────▶  ◎ OpenAI / Gemini
- │ read-along UI      │   partial/final/   │   └ TTS (stream)   │ ──────▶  ◎ ElevenLabs / Cartesia
- │ gapless playback   │ ◀── binary PCM ─── │  barge-in control  │
- └───────────────────┘   agent audio      └────────────────────┘
+ Owner (dashboard)                          Node backend (src/)                External APIs
+ ┌────────────────────┐  session cookie   ┌─────────────────────────┐
+ │ /dashboard SPA     │ ───REST/JSON────▶ │  requireOwner + ScopedDb │──┐
+ │  agents · keys ·   │                   │  (every query WHERE      │  │  SQLite (better-sqlite3)
+ │  calls · analytics │ ◀──────────────── │   tenant_id)             │  │  data/raabta.db
+ └────────────────────┘                   └─────────────────────────┘  │  tenants·users·sessions·
+                                                                        │  agents·embed_keys·calls·
+ Visitor (embed widget on any site)         resolve pk_live_ on upgrade │  transcript_turns
+ ┌────────────────────┐  wss /ws?key=     ┌─────────────────────────┐  │
+ │ mic → AudioWorklet │ ──binary PCM16──▶ │  VoiceSession (per agent)│──┘
+ │  (16 kHz)          │                   │   ├ AssemblyAI STT       │────▶ ◎ AssemblyAI Universal-Streaming
+ │  read-along UI     │ ◀── JSON + PCM ── │   ├ LLM (stream)         │────▶ ◎ OpenAI / Gemini
+ │  gapless playback  │   transcript+     │   ├ TTS (stream)         │────▶ ◎ ElevenLabs / Cartesia
+ └────────────────────┘   agent audio     │   └ CallRecorder ────────┼──── persists calls + transcript
+                                          └─────────────────────────┘
 ```
 
-One socket carries two planes: **binary frames = audio**, **text frames = JSON** (`ready`, `partial`,
-`final`, `agent`, `tts_start`, `tts_stop`, `error`). Direction disambiguates the audio. Full detail in
-[`docs/architecture.md`](docs/architecture.md).
+**Two separate planes.** The **owner plane** (dashboard) authenticates with a revocable session cookie;
+the **embed plane** (voice) authenticates only with a publishable key resolved on the WebSocket upgrade —
+a bad/revoked key is rejected *before* any provider socket opens. The two never cross.
+Full detail in [`docs/architecture.md`](docs/architecture.md).
 
 ## Quickstart
 
@@ -82,50 +107,63 @@ One socket carries two planes: **binary frames = audio**, **text frames = JSON**
 git clone https://github.com/FahadRamxan/AssemblyAI---Voice-Agent-Hackathon---Matrix-AE.git
 cd AssemblyAI---Voice-Agent-Hackathon---Matrix-AE
 npm install
-cp .env.example .env      # then add your keys (see below)
+cp .env.example .env      # add your keys (see below)
 npm start                 # -> http://localhost:8790
 ```
 
-Open **http://localhost:8790**, click **Start call**, allow the mic, and talk. No mic? Type in the box to
-test the brain + voice.
+- **http://localhost:8790/dashboard** — create a workspace, build your agent, get your embed snippet.
+- **http://localhost:8790/** — the live demo widget (talks to the seeded demo agent).
 
-**Keys** (in `.env`): `ASSEMBLYAI_API_KEY` (required for live STT), one LLM key
-(`OPENAI_API_KEY` or `GEMINI_API_KEY`), and one TTS key (`ELEVENLABS_API_KEY` or `CARTESIA_API_KEY`).
-The server boots without keys and tells you exactly what’s wired — but you need all three for the full
-voice loop.
+**Keys** (in `.env`): `ASSEMBLYAI_API_KEY` (live STT), one LLM key (`OPENAI_API_KEY` or `GEMINI_API_KEY`),
+and one TTS key (`ELEVENLABS_API_KEY` or `CARTESIA_API_KEY`). Provider keys are **platform-level** — tenants
+don't bring their own; that's the SaaS model. The server boots without keys and tells you what's wired.
+
+## Multi-tenancy & security
+
+- **Isolation by construction** — route handlers never get the raw DB handle; they get `scopedRepo(db, tenantId)`
+  whose every statement carries `WHERE tenant_id`. `tenant_id` comes only from the authenticated session or the
+  key-resolved row — never from client input. A leaked cross-tenant id reads as "not found".
+- **Owner auth** — scrypt password hashing (timing-safe, dummy-hash on unknown email to prevent enumeration),
+  revocable server-side sessions (only `sha256(token)` stored), rate-limited login/signup.
+- **Embed keys** — publishable, revocable, per-key origin allowlist, per-tenant concurrency cap + session
+  wall-clock cap so a lifted key can't run up provider spend. _(Origin check is a browser-only defence; the
+  real backstops are revocation + caps.)_
+
+## Data model (SQLite, 7 tables)
+
+`tenants` · `users` · `sessions` · `agents` · `embed_keys` · `calls` · `transcript_turns` (+ a `schema_meta`
+migration ledger). Every child row carries a denormalized `tenant_id`; the schema is applied idempotently on
+boot with WAL + foreign keys on.
 
 ## Testing
 
 ```bash
 npm run typecheck   # strict TS, clean
-npm test            # 10 hermetic unit tests (no keys/network)
+npm test            # 32 hermetic unit tests (no keys/network)
 node scripts/smoke.mjs path/to/clip-16k-mono.raw   # live end-to-end (server running + keys set)
 ```
 
-The unit tests cover the tricky bits in isolation — the STT message interpreter (partial vs final, and
-the **double-final dedupe** when `format_turns` is on), the sentence assembler (English + Arabic
-sentence enders), language detection, and conversation memory.
-
 ## An honest note on Arabic
 
-AssemblyAI’s **streaming** model is English-first (its multilingual streaming model adds Spanish, French,
-German, Italian, Portuguese). So the **live speech-to-text** here is English. The **agent’s brain and
-voice are fully bilingual** — ask it to reply in Arabic and you get natural Gulf Arabic (the LLM + TTS
-handle it, and the transcript renders RTL). Arabic *speech-to-text* is available today via AssemblyAI’s
-batch API, and our broader **RaabtaAI** platform benchmarks Arabic STT across engines. We’d rather ship
-the true capability than fake a live Arabic demo.
+AssemblyAI's **streaming** model is English-first (its multilingual streaming model adds Spanish, French,
+German, Italian, Portuguese). So the **live speech-to-text** here is English. The agent's **brain and voice
+are fully bilingual** — ask it to reply in Arabic and you get natural Gulf Arabic (LLM + TTS handle it, the
+transcript renders RTL). Arabic *speech-to-text* is available today via AssemblyAI's batch API. We'd rather
+ship the true capability than fake a live Arabic demo.
 
-## Tech stack
+## Honest scope
 
-TypeScript · Node.js (`ws`, zero other runtime deps) · Web Audio API (AudioWorklet) · WebSocket ·
-AssemblyAI Universal-Streaming (STT) · OpenAI / Gemini (LLM) · ElevenLabs / Cartesia (TTS).
+- Provider keys are platform-level by design (the SaaS economics), not per-tenant BYO.
+- SQLite is single-node — ideal for the hackathon + a single instance; Postgres/LiteFS is the scale path.
+- On Render's free plan the disk is ephemeral (the DB resets on redeploy) — attach a persistent disk for durability.
+- Billing, team seats, and email verification are modeled but not built.
 
 ## Team & disclosure
 
-Built by **Matrix AE**, the team behind **RaabtaAI** — a production bilingual voice-agent platform for
-the MENA market. RaabtaAI is a pre-existing product; **this repository is an original, self-contained
-build created for this hackathon** to showcase AssemblyAI Universal-Streaming as the realtime STT
-foundation. MIT licensed.
+Built by **Matrix AE**, the team behind **RaabtaAI** — a production bilingual voice-agent platform for the
+MENA market. RaabtaAI is a pre-existing product; **this repository is an original, self-contained build
+created for this hackathon** to showcase AssemblyAI Universal-Streaming as the real-time STT foundation of a
+complete SaaS. MIT licensed.
 
 ## License
 
