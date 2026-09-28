@@ -28,7 +28,8 @@ import { createRecorder } from "./recorder.js";
 import { ensureDemoKey } from "./seed.js";
 import { handleDashboard } from "./dashboard.js";
 import { resolveSharedReport } from "./report.js";
-import { json, readJson, clientIp, str } from "./http.js";
+import { synthesize } from "./tts.js";
+import { json, readJson, clientIp, str, optStr } from "./http.js";
 import { ConcurrencyTracker, RateLimiter, loadLimits } from "./limits.js";
 import {
   signup,
@@ -51,6 +52,7 @@ interface HttpDeps {
   demoKey: string;
   db: ReturnType<typeof getDb>;
   authLimiter: RateLimiter;
+  previewLimiter: RateLimiter;
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -76,7 +78,8 @@ export function createServer(cfg: Config) {
   const concurrency = new ConcurrencyTracker(limits.maxConcurrentPerTenant);
 
   const authLimiter = new RateLimiter(20, 60_000); // 20 auth attempts / minute / ip
-  const deps: HttpDeps = { cfg, demoKey, db, authLimiter };
+  const previewLimiter = new RateLimiter(20, 60_000); // 20 voice previews / minute / tenant (bounds provider spend)
+  const deps: HttpDeps = { cfg, demoKey, db, authLimiter, previewLimiter };
 
   const http = createHttp((req, res) => {
     void handleHttp(req, res, deps).catch((err) => {
@@ -212,7 +215,7 @@ function attachSession(ws: WebSocket, ctx: SessionContext, onClose: () => void):
 }
 
 async function handleHttp(req: IncomingMessage, res: ServerResponse, deps: HttpDeps): Promise<void> {
-  const { cfg, demoKey, db, authLimiter } = deps;
+  const { cfg, demoKey, db, authLimiter, previewLimiter } = deps;
   const method = req.method ?? "GET";
   const url = (req.url ?? "/").split("?")[0] || "/";
 
@@ -243,6 +246,37 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse, deps: HttpD
   if (url === "/api/auth/login" && method === "POST") return authLogin(req, res, db, authLimiter);
   if (url === "/api/auth/logout" && method === "POST") return authLogout(req, res, db);
   if (url === "/api/auth/me" && method === "GET") return authMe(req, res, db);
+
+  // ---- voice preview: synthesize a short sample on a chosen voice (owner-only) ----
+  // Lives here (not dashboard.ts) because it needs the platform TTS key from cfg.
+  if (url === "/api/dashboard/voice-preview" && method === "POST") {
+    const principal = requireOwner(db, req.headers);
+    if (!principal) return json(res, 401, { error: "unauthenticated" });
+    if (!cfg.tts) return json(res, 503, { error: "tts_not_configured" });
+    if (!previewLimiter.check(`preview:${principal.tenantId}`)) return json(res, 429, { error: "rate_limited" });
+    let body: Record<string, unknown>;
+    try {
+      body = await readJson(req);
+    } catch {
+      return json(res, 400, { error: "invalid_json" });
+    }
+    const voiceId = optStr(body.voiceId)?.slice(0, 100) || cfg.tts.voiceId;
+    if (!voiceId) return json(res, 400, { error: "voice_required" });
+    const lang = str(body.lang) === "ar" ? "ar" : "en";
+    const text = (str(body.text) || "Hi, this is how I sound on a Raabta call.").slice(0, 300);
+    const ac = new AbortController();
+    req.on("close", () => ac.abort()); // stop synthesis (+ provider spend) if the client leaves
+    try {
+      res.writeHead(200, { "content-type": "audio/pcm; rate=24000", "cache-control": "no-store" });
+      for await (const chunk of synthesize({ ...cfg.tts, voiceId }, text, lang, ac.signal)) res.write(chunk);
+      res.end();
+    } catch (err) {
+      log.warn("voice preview failed", { err: String(err) });
+      if (!res.headersSent) json(res, 502, { error: "tts_failed" });
+      else res.end();
+    }
+    return;
+  }
 
   // ---- owner dashboard plane (all requireOwner + tenant-scoped) ----
   if (url.startsWith("/api/dashboard/")) return handleDashboard(req, res, db);

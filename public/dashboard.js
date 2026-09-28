@@ -34,6 +34,87 @@ async function api(method, path, body) {
 }
 
 // --------------------------------------------------------------------------
+// agent voices — curated ElevenLabs presets + a custom option
+// (turbo_v2_5 is multilingual, so these English voices still speak other
+//  languages, with an accent. "" = keep the platform default.)
+// --------------------------------------------------------------------------
+const AGENT_VOICES = [
+  { id: "", name: "Platform default", desc: "" },
+  { id: "21m00Tcm4TlvDq8ikWAM", name: "Rachel", desc: "calm US female" },
+  { id: "AZnzlk1XvdvUeBnXmlld", name: "Domi", desc: "confident US female" },
+  { id: "EXAVITQu4vr4xnSDxMaL", name: "Bella", desc: "soft US female" },
+  { id: "MF3mGyEYCl7XYWbV9V6O", name: "Elli", desc: "warm US female" },
+  { id: "pNInz6obpgDQGcFmaJgB", name: "Adam", desc: "deep US male" },
+  { id: "ErXwobaYiN019PkySvjV", name: "Antoni", desc: "well-rounded US male" },
+  { id: "TxGEqnHWrfWFTfGW9XjX", name: "Josh", desc: "deep US male" },
+  { id: "VR6AewLTigWG4xSOukaG", name: "Arnold", desc: "crisp US male" },
+  { id: "yoZ06aMxZJJ28mfd3POQ", name: "Sam", desc: "raspy US male" },
+  { id: "__custom__", name: "Custom voice ID…", desc: "" },
+];
+const KNOWN_VOICE_IDS = new Set(AGENT_VOICES.map((v) => v.id));
+
+/** Which <select> option matches an agent's stored voiceId (unknown ids -> Custom). */
+function voiceSelectValue(voiceId) {
+  if (!voiceId) return "";
+  return KNOWN_VOICE_IDS.has(voiceId) ? voiceId : "__custom__";
+}
+
+/** Effective voiceId from a card: "" -> null (platform default); Custom -> the typed id. */
+function resolveVoiceId(c) {
+  const v = $(".f-voice-select", c).value;
+  if (v === "__custom__") return $(".f-voice-custom", c).value.trim() || null;
+  return v || null;
+}
+
+/** Build the voice <select> options markup, preselecting the agent's current voice. */
+function voiceOptions(voiceId) {
+  const sel = voiceSelectValue(voiceId);
+  return AGENT_VOICES.map((v) => {
+    const label = v.desc ? `${v.name} — ${v.desc}` : v.name;
+    return `<option value="${esc(v.id)}" ${v.id === sel ? "selected" : ""}>${esc(label)}</option>`;
+  }).join("");
+}
+
+/** Play a short sample of a voice (POST -> raw 24 kHz PCM -> Web Audio), mirroring the widget player. */
+async function previewVoice(voiceId, lang, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch("/api/dashboard/voice-preview", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ voiceId, lang: lang === "ar" ? "ar" : "en" }),
+    });
+    if (!res.ok) {
+      let err;
+      try {
+        err = (await res.json()).error;
+      } catch {
+        /* no body */
+      }
+      return toast(errorText(err));
+    }
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const usable = bytes.length - (bytes.length % 2);
+    if (usable <= 0) return toast("No audio returned");
+    const pcm = new Int16Array(bytes.buffer, bytes.byteOffset, usable / 2);
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = ctx.createBuffer(1, pcm.length, 24000);
+    const ch = buf.getChannelData(0);
+    for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.onended = () => ctx.close();
+    src.start();
+  } catch {
+    toast("Could not play the preview");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// --------------------------------------------------------------------------
 // auth
 // --------------------------------------------------------------------------
 let authMode = "login";
@@ -89,6 +170,9 @@ function errorText(code) {
       weak_password: "Password must be at least 8 characters.",
       invalid_workspace: "Enter your business name.",
       rate_limited: "Too many attempts — try again in a minute.",
+      tts_not_configured: "No voice provider configured on the server.",
+      voice_required: "Pick a voice or enter a voice ID first.",
+      tts_failed: "Couldn't synthesize that voice — check the voice ID.",
     }[code] || "Something went wrong. Try again."
   );
 }
@@ -573,8 +657,14 @@ function renderAgentCard(list, ag, isNew) {
     <label>Greeting (spoken first)</label><input class="f-greet" value="${esc(ag?.greeting || "")}" placeholder="Thanks for calling! How can I help?" />
     <label>Keyterms (comma separated — boosts recognition of names/brands)</label>
     <input class="f-keyterms" value="${esc((ag?.keyterms || []).join(", "))}" placeholder="Acme, Dr. Khalid" />
-    <label>Voice ID (optional — overrides the platform default)</label>
-    <input class="f-voice" value="${esc(ag?.voiceId || "")}" placeholder="(default)" />
+    <label>Voice</label>
+    <div class="row f-voice-row">
+      <select class="f-voice-select grow">${voiceOptions(ag?.voiceId || "")}</select>
+      <button type="button" class="btn sm f-voice-preview" title="Hear a sample">▶ Preview</button>
+    </div>
+    <input class="f-voice-custom ${voiceSelectValue(ag?.voiceId || "") === "__custom__" ? "" : "hidden"}"
+      value="${esc(voiceSelectValue(ag?.voiceId || "") === "__custom__" ? ag?.voiceId || "" : "")}"
+      placeholder="Custom ElevenLabs voice ID" />
     <label>Persona / system prompt</label>
     <textarea class="f-persona" placeholder="You are a warm receptionist for…">${esc(ag?.persona || "")}</textarea>
     <label class="ab-toggle"><input type="checkbox" class="f-ab" ${ag?.abEnabled ? "checked" : ""} /> <span>A/B test a second persona</span></label>
@@ -591,12 +681,18 @@ function renderAgentCard(list, ag, isNew) {
   $(".f-ab", c).onchange = (e) => abBox.classList.toggle("hidden", !e.target.checked);
   if (!isNew && ag?.abEnabled) void loadAbStats(ag.id, $(".ab-stats", c));
 
+  // Voice picker: reveal the custom field only for "Custom…"; preview the chosen voice.
+  const voiceSel = $(".f-voice-select", c);
+  const voiceCustom = $(".f-voice-custom", c);
+  voiceSel.onchange = () => voiceCustom.classList.toggle("hidden", voiceSel.value !== "__custom__");
+  $(".f-voice-preview", c).onclick = (e) => previewVoice(resolveVoiceId(c), $(".f-lang", c).value, e.currentTarget);
+
   $(".f-save", c).onclick = async () => {
     const payload = {
       name: $(".f-name", c).value.trim(),
       greeting: $(".f-greet", c).value,
       language: $(".f-lang", c).value,
-      voiceId: $(".f-voice", c).value.trim() || null,
+      voiceId: resolveVoiceId(c),
       keyterms: $(".f-keyterms", c).value.split(",").map((s) => s.trim()).filter(Boolean),
       persona: $(".f-persona", c).value,
       personaB: $(".f-persona-b", c).value.trim() || null,
