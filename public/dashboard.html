@@ -6,11 +6,14 @@
     <title>Raabta Live — Dashboard</title>
     <link rel="stylesheet" href="/dashboard.css" />
     <script>
-      // Apply the saved theme before paint (no flash).
+      // Apply theme (default: light) + sidebar state before paint (no flash).
       try {
-        var t = localStorage.getItem("raabta_theme");
-        if (t) document.documentElement.dataset.theme = t;
-      } catch (e) {}
+        document.documentElement.dataset.theme = localStorage.getItem("raabta_theme") || "light";
+        if (localStorage.getItem("raabta_sidebar") === "collapsed")
+          document.documentElement.classList.add("side-collapsed");
+      } catch (e) {
+        document.documentElement.dataset.theme = "light";
+      }
     </script>
   </head>
   <body>
@@ -69,7 +72,12 @@
     <!-- app view -->
     <div id="app" class="hidden">
       <aside class="sidebar">
-        <div class="brand"><span class="dot">◉</span> Raabta Live</div>
+        <div class="sidebar-head">
+          <div class="brand"><span class="dot">◉</span> <span class="brand-name">Raabta Live</span></div>
+          <button class="collapse-btn" id="collapseBtn" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+          </button>
+        </div>
         <nav class="nav" id="nav">
           <button data-tab="home" class="active">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
@@ -106,7 +114,10 @@
         <div class="who" id="who"></div>
         <div class="side-actions">
           <button class="icon-btn" id="themeBtn" title="Toggle light / dark" aria-label="Toggle theme"></button>
-          <button class="btn ghost sm block" id="logoutBtn">Log out</button>
+          <button class="btn ghost sm block" id="logoutBtn" title="Log out">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+            <span>Log out</span>
+          </button>
         </div>
       </aside>
       <main id="view"></main>
@@ -125,6 +136,7 @@
     </div>
 
     <div id="toast"></div>
+    <script src="/motion.js"></script>
     <script src="/dashboard.js"></script>
   </body>
 </html>

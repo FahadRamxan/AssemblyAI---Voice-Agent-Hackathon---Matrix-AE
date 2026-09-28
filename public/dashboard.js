@@ -12,6 +12,7 @@ function toast(msg) {
   const t = $("#toast");
   t.textContent = msg;
   t.classList.add("show");
+  window.RM?.pop(t);
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
 }
@@ -114,10 +115,34 @@ function showApp() {
   $("#logoutBtn").onclick = doLogout;
   $("#themeBtn").onclick = toggleTheme;
   $("#paletteBtn").onclick = openPalette;
+  $("#collapseBtn").onclick = toggleSidebar;
+  applyNavTitles();
   syncThemeIcon();
   if (liveBadgeTimer) clearInterval(liveBadgeTimer);
   startLiveBadgePoll();
   renderTab();
+}
+
+// Collapsible sidebar (icon rail) — persisted, spring-animated via CSS.
+function toggleSidebar() {
+  const collapsed = document.documentElement.classList.toggle("side-collapsed");
+  try {
+    localStorage.setItem("raabta_sidebar", collapsed ? "collapsed" : "expanded");
+  } catch {
+    /* ignore */
+  }
+  const b = $("#collapseBtn");
+  if (b) {
+    b.title = collapsed ? "Expand sidebar" : "Collapse sidebar";
+    b.setAttribute("aria-label", b.title);
+  }
+}
+// Native tooltips so the collapsed icon rail stays identifiable.
+function applyNavTitles() {
+  for (const b of document.querySelectorAll("#nav button")) {
+    const label = b.querySelector("span:not(.live-badge)")?.textContent?.trim();
+    if (label) b.title = label;
+  }
 }
 
 async function doLogout() {
@@ -135,7 +160,7 @@ async function doLogout() {
 // theme
 // --------------------------------------------------------------------------
 function currentTheme() {
-  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light"; // light is the default
 }
 function syncThemeIcon() {
   const b = $("#themeBtn");
@@ -275,9 +300,14 @@ const ICONS = {
 };
 
 function kpiTile(k, val, icon, opts = {}) {
+  // When a numeric `count` is given, the value animates 0→count on reveal (motion.js).
+  const vAttrs =
+    opts.count != null && isFinite(opts.count)
+      ? ` data-count="${opts.count}" data-suffix="${esc(opts.suffix || "")}" data-decimals="${opts.decimals || 0}"`
+      : "";
   return `<div class="tile ${opts.accent ? "accent" : ""}">
     <div class="tile-top"><span class="tile-ic">${icon}</span><span class="k">${k}</span></div>
-    <div class="v">${val}</div>
+    <div class="v"${vAttrs}>${val}</div>
     ${opts.hint ? `<div class="tile-hint">${esc(opts.hint)}</div>` : ""}
   </div>`;
 }
@@ -323,12 +353,12 @@ async function tabHome(v) {
     </div>
     ${checklist}
     <div class="tiles">
-      ${kpiTile("Total calls", a.totalCalls || 0, ICONS.calls)}
-      ${kpiTile("Calls · last 7 days", a.callsLast7Days || 0, ICONS.week)}
+      ${kpiTile("Total calls", a.totalCalls || 0, ICONS.calls, { count: a.totalCalls || 0 })}
+      ${kpiTile("Calls · last 7 days", a.callsLast7Days || 0, ICONS.week, { count: a.callsLast7Days || 0 })}
       ${kpiTile("Avg duration", dur, ICONS.clock)}
       ${kpiTile("Avg turns / call", a.avgTurnsPerCall || 0, ICONS.turns)}
       ${kpiTile("Barge-in rate", a.bargeInRate || 0, ICONS.bolt, { accent: true, hint: "callers who interrupted" })}
-      ${kpiTile("Reply latency p50", a.latencyMsP50 != null ? a.latencyMsP50 + "ms" : "—", ICONS.gauge, { hint: a.latencyMsP95 != null ? "p95 " + a.latencyMsP95 + "ms" : "" })}
+      ${kpiTile("Reply latency p50", a.latencyMsP50 != null ? a.latencyMsP50 + "ms" : "—", ICONS.gauge, { count: a.latencyMsP50 != null ? a.latencyMsP50 : null, suffix: "ms", hint: a.latencyMsP95 != null ? "p95 " + a.latencyMsP95 + "ms" : "" })}
     </div>
     <div class="grid-2">
       <div class="panel">
@@ -360,6 +390,8 @@ async function tabHome(v) {
       </div>
     </div>`;
   wireEmptyCtas(v);
+  window.RM?.reveal(v);
+  window.RM?.countUpAll(v);
 }
 
 const LANG_NAMES = { en: "English", es: "Spanish", fr: "French", de: "German", it: "Italian", pt: "Portuguese", ar: "Arabic" };
@@ -402,7 +434,9 @@ async function tabLive(v) {
       <span class="live-pill"><span class="live-dot"></span> live</span>
     </div>
     <div id="liveGrid"></div>`;
+  window.RM?.enter($(".view-head", v), { y: 8 });
   liveSig = "";
+  let firstPaint = true;
   const paint = async () => {
     const { data } = await api("GET", "/api/dashboard/live");
     const grid = $("#liveGrid");
@@ -411,6 +445,8 @@ async function tabLive(v) {
     const nowT = data?.now || Date.now();
     const sig = JSON.stringify(calls.map((c) => [c.callId, c.turnCount, c.bargeInCount, c.lastAgent, c.lastCaller]));
     if (sig === liveSig && calls.length) return; // no change → no flicker (timers still tick on change)
+    const newIds = calls.map((c) => c.callId).join(",");
+    const hadIds = liveSig ? JSON.parse(liveSig).map((x) => x[0]).join(",") : "";
     liveSig = sig;
     if (!calls.length) {
       grid.innerHTML = emptyState(
@@ -421,9 +457,14 @@ async function tabLive(v) {
         "talk",
       );
       wireEmptyCtas(grid);
+      if (firstPaint) window.RM?.reveal(grid);
+      firstPaint = false;
       return;
     }
     grid.innerHTML = `<div class="live-grid">${calls.map((c) => liveCard(c, nowT)).join("")}</div>`;
+    // Animate cards in only when the SET of calls changes (not on every transcript tick).
+    if (firstPaint || newIds !== hadIds) window.RM?.stagger(grid.querySelectorAll(".live-card"), { y: 10, step: 60 });
+    firstPaint = false;
   };
   await paint();
   livePollTimer = setInterval(paint, 2000);
@@ -455,8 +496,10 @@ function startLiveBadgePoll() {
     const badge = $("#liveBadge");
     if (!badge) return;
     const n = ok && data?.calls ? data.calls.length : 0;
+    const wasHidden = badge.hidden;
     badge.hidden = n === 0;
     badge.textContent = String(n);
+    if (wasHidden && n > 0) window.RM?.pop(badge); // spring in when a call goes live
   };
   void tick();
   liveBadgeTimer = setInterval(tick, 6000);
@@ -502,6 +545,7 @@ async function tabAgents(v) {
   list.innerHTML = "";
   for (const ag of agents) renderAgentCard(list, ag, false);
   if (!agents.length) list.innerHTML = `<p class="muted">No agents yet — create one.</p>`;
+  window.RM?.reveal(v);
 }
 
 function renderAgentCard(list, ag, isNew) {
@@ -643,6 +687,7 @@ async function tabKeys(v) {
       }</tbody></table>
     </div>`;
 
+  window.RM?.reveal(v);
   if (snippetKey) {
     $("#copySnippet").onclick = () => {
       navigator.clipboard?.writeText($("#snippet").textContent).then(() => toast("Snippet copied"));
@@ -680,6 +725,7 @@ async function tabCalls(v) {
       <p class="view-sub">Every conversation your agents handled — click one to read the transcript.</p>
       ${emptyState(ICONS.calls, "No calls yet", "Open the “Talk to your agent” tab and say hello — your call will appear here with its full transcript.", "Talk to your agent", "talk")}`;
     wireEmptyCtas(v);
+    window.RM?.reveal(v);
     return;
   }
   v.innerHTML = `
@@ -701,6 +747,7 @@ async function tabCalls(v) {
         .join("")}</tbody></table>
     </div>
     <div id="callDetail"></div>`;
+  window.RM?.reveal(v);
   for (const tr of v.querySelectorAll("[data-call]")) {
     tr.onclick = async () => {
       const callId = tr.dataset.call;

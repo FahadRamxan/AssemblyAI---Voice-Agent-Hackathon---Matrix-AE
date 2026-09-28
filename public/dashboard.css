@@ -1361,3 +1361,98 @@ iframe.talk {
   margin-top: 10px;
   font-size: 13px;
 }
+
+/* ---- collapsible sidebar ---- */
+.sidebar {
+  transition: width 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+}
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.sidebar-head .brand {
+  margin: 0;
+  white-space: nowrap;
+}
+.collapse-btn {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel2);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+.collapse-btn:hover {
+  color: var(--text);
+  border-color: rgba(45, 212, 191, 0.35);
+}
+.collapse-btn svg {
+  transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.side-collapsed .sidebar {
+  width: 76px;
+}
+.side-collapsed .brand,
+.side-collapsed .cmdk-open span,
+.side-collapsed .cmdk-open kbd,
+.side-collapsed .who-meta,
+.side-collapsed #logoutBtn span,
+.side-collapsed .nav button > span:not(.live-badge) {
+  display: none;
+}
+.side-collapsed .sidebar-head {
+  justify-content: center;
+}
+.side-collapsed .collapse-btn svg {
+  transform: rotate(180deg);
+}
+.side-collapsed .nav button {
+  justify-content: center;
+  padding: 10px;
+}
+.side-collapsed .nav button.active::before {
+  left: -12px;
+}
+.side-collapsed .cmdk-open {
+  justify-content: center;
+  padding: 9px;
+}
+.side-collapsed .who {
+  justify-content: center;
+  padding: 12px 0;
+}
+.side-collapsed .side-actions {
+  flex-direction: column;
+}
+.side-collapsed .side-actions #logoutBtn {
+  padding: 9px;
+}
+.side-collapsed .live-badge {
+  position: absolute;
+  margin: 0;
+  top: 5px;
+  right: 12px;
+  min-width: 8px;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  font-size: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .collapse-btn svg {
+    transition: none !important;
+  }
+}
