@@ -148,8 +148,25 @@ function reject(socket: import("node:stream").Duplex, code: number, msg: string)
   log.debug("ws upgrade rejected", { code, msg });
 }
 
+const UNSTARTED_TIMEOUT_MS = 15_000; // close a socket that connects but never sends {start}
+
 function attachSession(ws: WebSocket, ctx: SessionContext, onClose: () => void): void {
   const session = new VoiceSession(ws, ctx);
+
+  // A socket that resolves a key + takes a concurrency slot but never starts would
+  // otherwise hold that slot forever (the wall-clock cap only arms inside start()).
+  // Close it if it stays idle, so a lifted key can't exhaust a tenant's slots.
+  let started = false;
+  const idleTimer = setTimeout(() => {
+    if (!started) {
+      try {
+        ws.close(4408, "idle — no start");
+      } catch {
+        /* ignore */
+      }
+    }
+  }, UNSTARTED_TIMEOUT_MS);
+  idleTimer.unref?.();
 
   ws.on("message", (data, isBinary) => {
     if (isBinary) {
@@ -162,15 +179,23 @@ function attachSession(ws: WebSocket, ctx: SessionContext, onClose: () => void):
     } catch {
       return;
     }
-    if (msg.type === "start") session.start();
-    else if (msg.type === "stop") session.close();
-    else if (msg.type === "text") session.onText(msg.text);
+    if (msg.type === "start") {
+      started = true;
+      clearTimeout(idleTimer);
+      session.start();
+    } else if (msg.type === "stop") session.close();
+    else if (msg.type === "text") {
+      started = true;
+      clearTimeout(idleTimer);
+      session.onText(msg.text);
+    }
   });
 
   let released = false;
   const cleanup = () => {
     if (released) return;
     released = true;
+    clearTimeout(idleTimer);
     session.close();
     onClose();
     log.info("call disconnected", { callId: ctx.callId });

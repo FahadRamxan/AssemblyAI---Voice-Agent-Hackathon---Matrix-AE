@@ -47,10 +47,10 @@ export async function handleDashboard(req: IncomingMessage, res: ServerResponse,
       if (!LANGS.has(language)) return json(res, 400, { error: "invalid_language" });
       const agent = repo.createAgent({
         name: name.slice(0, 100),
-        persona,
-        greeting: str(body.greeting),
+        persona: persona.slice(0, 8000),
+        greeting: str(body.greeting).slice(0, 500),
         language,
-        voiceId: optStr(body.voiceId),
+        voiceId: optStr(body.voiceId)?.slice(0, 100) ?? null,
         keyterms: strArray(body.keyterms),
       });
       return json(res, 201, { agent: publicAgent(agent) });
@@ -63,10 +63,10 @@ export async function handleDashboard(req: IncomingMessage, res: ServerResponse,
       }
       const updated = repo.updateAgent(agentId, {
         name: body.name !== undefined ? str(body.name).slice(0, 100) : undefined,
-        persona: body.persona !== undefined ? str(body.persona) : undefined,
-        greeting: body.greeting !== undefined ? str(body.greeting) : undefined,
+        persona: body.persona !== undefined ? str(body.persona).slice(0, 8000) : undefined,
+        greeting: body.greeting !== undefined ? str(body.greeting).slice(0, 500) : undefined,
         language: body.language !== undefined ? str(body.language) : undefined,
-        voiceId: body.voiceId !== undefined ? optStr(body.voiceId) : undefined,
+        voiceId: body.voiceId !== undefined ? (optStr(body.voiceId)?.slice(0, 100) ?? null) : undefined,
         keyterms: body.keyterms !== undefined ? strArray(body.keyterms) : undefined,
         isActive: body.isActive !== undefined ? Boolean(body.isActive) : undefined,
       });
