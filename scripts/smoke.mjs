@@ -1,14 +1,17 @@
 /**
  * Live end-to-end smoke test.
  *
- * Drives the server exactly like the browser would: opens /ws, streams a raw
- * 16 kHz mono PCM16 clip in real-time 50 ms frames, and checks the full
- * pipeline round-trips — AssemblyAI final transcript -> LLM reply -> TTS audio.
+ * Drives the server exactly like the browser would: resolves an embed key,
+ * opens /ws?key=..., streams a raw 16 kHz mono PCM16 clip in real-time 50 ms
+ * frames, and checks the full pipeline round-trips — AssemblyAI final
+ * transcript -> LLM reply -> TTS audio.
  *
  *   node scripts/smoke.mjs [path-to-16k-mono.raw]
  *   SMOKE_PCM=/path/to/clip.raw node scripts/smoke.mjs
+ *   SMOKE_KEY=pk_live_...  node scripts/smoke.mjs clip.raw   # a specific tenant's agent
  *
- * Needs a running server (`npm start`) with real keys in .env.
+ * Needs a running server (`npm start`) with real keys in .env. With no
+ * SMOKE_KEY, it fetches the demo agent's publishable key from /api/config.
  */
 import WebSocket from "ws";
 import { readFileSync } from "node:fs";
@@ -29,10 +32,29 @@ console.log(`clip: ${PCM_PATH} (${(pcm.length / 32000).toFixed(1)}s @16k)`);
 const state = { ready: false, finals: [], agentAfterFinal: [], ttsBytes: 0, greetingBytes: 0 };
 let sawFinal = false;
 
-const ws = new WebSocket(WS_URL);
+async function resolveKeyedUrl() {
+  if (process.env.SMOKE_KEY) return `${WS_URL}?key=${encodeURIComponent(process.env.SMOKE_KEY)}`;
+  const httpBase = WS_URL.replace(/^ws/, "http").replace(/\/ws$/, "");
+  try {
+    const cfg = await (await fetch(`${httpBase}/api/config`)).json();
+    if (cfg.embedKey) {
+      console.log(`using demo embed key ${cfg.embedKey.slice(0, 16)}…`);
+      return `${WS_URL}?key=${encodeURIComponent(cfg.embedKey)}`;
+    }
+  } catch (err) {
+    console.error("could not fetch /api/config for a key:", err.message);
+  }
+  return WS_URL;
+}
+
+const ws = new WebSocket(await resolveKeyedUrl());
 ws.binaryType = "nodebuffer";
 
 ws.on("open", () => ws.send(JSON.stringify({ type: "start" })));
+ws.on("unexpected-response", (_req, res) => {
+  console.error(`server refused the socket: HTTP ${res.statusCode} (bad/missing embed key?)`);
+  process.exit(1);
+});
 
 ws.on("message", (data, isBinary) => {
   if (isBinary) {
