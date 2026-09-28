@@ -16,7 +16,8 @@
 import type { WebSocket } from "ws";
 import type { LlmConfig, TtsConfig } from "./config.js";
 import type { ResolvedAgent } from "./embed.js";
-import { AssemblyAiStt } from "./stt/assemblyai.js";
+import { AssemblyAiStt, type SttMeta, type SttWord } from "./stt/assemblyai.js";
+import { utteranceConfidence, shouldConfirm, confirmationNote } from "./confidence.js";
 import { streamLlm } from "./llm.js";
 import { synthesize, TTS_SAMPLE_RATE } from "./tts.js";
 import { Conversation, SentenceAssembler, detectLang } from "./agent.js";
@@ -94,8 +95,8 @@ export class VoiceSession {
     if (this.ctx.platform.assemblyAiKey) {
       this.stt.connect({
         onReady: () => log.info("stt session ready", { callId: this.ctx.callId }),
-        onPartial: (text) => this.onPartial(text),
-        onFinal: (text) => this.onFinal(text),
+        onPartial: (text, words) => this.onPartial(text, words),
+        onFinal: (text, meta) => this.onFinal(text, meta),
         onError: (err) => {
           log.error("stt error", { err: err.message });
           this.send({ type: "error", message: `Speech-to-text error: ${err.message}` });
@@ -133,14 +134,16 @@ export class VoiceSession {
     if (clean) this.onFinal(clean);
   }
 
-  private onPartial(text: string): void {
-    this.send({ type: "partial", text });
+  private onPartial(text: string, words?: SttWord[]): void {
+    this.send({ type: "partial", text, words });
     // Caller started talking while the agent was speaking -> barge-in.
     if (this.ttsActive) this.bargeIn();
   }
 
-  private onFinal(text: string): void {
-    this.send({ type: "final", text });
+  private onFinal(text: string, meta?: SttMeta): void {
+    const words = meta?.words ?? [];
+    const confidence = utteranceConfidence(words, meta?.endOfTurnConfidence);
+    this.send({ type: "final", text, words, confidence });
     const lang = detectLang(text);
     if (lang === "ar") this.langTally.ar++;
     else this.langTally.en++;
@@ -149,11 +152,13 @@ export class VoiceSession {
     } catch (err) {
       log.warn("recorder callerTurn failed", { err: String(err) });
     }
-    void this.handleTurn(text);
+    // AssemblyAI word confidence -> if an important word was uncertain, have the agent confirm it.
+    const note = words.length && shouldConfirm(words) ? confirmationNote(words) : null;
+    void this.handleTurn(text, note);
   }
 
   /** Run one caller turn: LLM (stream) -> sentences -> TTS -> audio. */
-  private async handleTurn(userText: string): Promise<void> {
+  private async handleTurn(userText: string, confirmNote?: string | null): Promise<void> {
     if (this.closed) return;
     if (!this.ctx.platform.llm) {
       this.send({ type: "error", message: "No LLM configured (set OPENAI_API_KEY or GEMINI_API_KEY)." });
@@ -163,6 +168,8 @@ export class VoiceSession {
     this.abortInflight();
     const seq = ++this.turnSeq;
     this.convo.addUser(userText);
+    // AssemblyAI flagged a low-confidence word -> nudge the agent to confirm it.
+    if (confirmNote) this.convo.addSystemNote(confirmNote);
 
     this.llmAbort = new AbortController();
     const assembler = new SentenceAssembler();

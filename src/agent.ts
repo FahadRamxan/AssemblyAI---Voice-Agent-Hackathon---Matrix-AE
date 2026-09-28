@@ -35,6 +35,11 @@ export class Conversation {
     if (text.trim()) this.history.push({ role: "assistant", content: text.trim() });
   }
 
+  /** A transient system nudge for the next reply (e.g. "confirm the number you heard"). */
+  addSystemNote(text: string): void {
+    if (text.trim()) this.history.push({ role: "system", content: text.trim() });
+  }
+
   /** Full message list for the next LLM call. */
   messages(): ChatMessage[] {
     return this.history;
