@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Call report — Raabta Live</title>
+    <meta name="robots" content="noindex" />
+    <style>
+      :root {
+        --bg: #070b12;
+        --panel: rgba(255, 255, 255, 0.05);
+        --border: rgba(255, 255, 255, 0.1);
+        --fg: #eaf1fa;
+        --muted: #93a4ba;
+        --accent: #2dd4bf;
+        --accent2: #6366f1;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(40vw 40vw at 82% -6%, rgba(99, 102, 241, 0.22), transparent 60%),
+          radial-gradient(34vw 34vw at 6% 100%, rgba(45, 212, 191, 0.16), transparent 60%), var(--bg);
+        color: var(--fg);
+        font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 40px 20px 64px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 800;
+        font-size: 18px;
+      }
+      .dot {
+        color: var(--accent);
+        text-shadow: 0 0 18px rgba(45, 212, 191, 0.8);
+      }
+      h1 {
+        font-size: 24px;
+        letter-spacing: -0.4px;
+        margin: 26px 0 4px;
+      }
+      .sub {
+        color: var(--muted);
+        margin: 0 0 22px;
+      }
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 24px;
+      }
+      .chip {
+        border: 1px solid var(--border);
+        background: var(--panel);
+        border-radius: 999px;
+        padding: 5px 13px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .chip b {
+        color: var(--fg);
+        font-weight: 650;
+      }
+      .thread {
+        border: 1px solid var(--border);
+        background: var(--panel);
+        border-radius: 16px;
+        padding: 18px;
+        backdrop-filter: blur(14px);
+      }
+      .bubble {
+        max-width: 82%;
+        padding: 10px 14px;
+        border-radius: 14px;
+        margin: 10px 0;
+      }
+      .bubble .r {
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 3px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .caller {
+        margin-left: auto;
+        background: rgba(255, 255, 255, 0.06);
+        border-bottom-right-radius: 5px;
+      }
+      .agent {
+        background: linear-gradient(135deg, rgba(45, 212, 191, 0.16), rgba(99, 102, 241, 0.12));
+        border-bottom-left-radius: 5px;
+      }
+      .rtl {
+        direction: rtl;
+        text-align: right;
+      }
+      .foot {
+        margin-top: 26px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .foot a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      .state {
+        text-align: center;
+        color: var(--muted);
+        padding: 60px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="brand"><span class="dot">◉</span> Raabta&nbsp;Live</div>
+      <div id="content"><div class="state">Loading report…</div></div>
+      <div class="foot">Shared read-only transcript · <a href="/">Raabta Live</a> — voice agents on AssemblyAI</div>
+    </div>
+    <script>
+      const isArabic = (t) => (String(t).match(/[؀-ۿ]/g) || []).length > (String(t).match(/[A-Za-z]/g) || []).length;
+      const esc = (s) =>
+        String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      const LANG = { en: "English", es: "Spanish", fr: "French", de: "German", it: "Italian", pt: "Portuguese", ar: "Arabic" };
+
+      async function load() {
+        const token = new URLSearchParams(location.search).get("t") || "";
+        const content = document.getElementById("content");
+        if (!token) {
+          content.innerHTML = `<div class="state">No report token.</div>`;
+          return;
+        }
+        let r;
+        try {
+          const res = await fetch(`/api/report/${encodeURIComponent(token)}`);
+          if (!res.ok) throw new Error("not found");
+          r = await res.json();
+        } catch {
+          content.innerHTML = `<div class="state">This report link is invalid or was unshared.</div>`;
+          return;
+        }
+        const dur = r.durationMs != null ? (r.durationMs / 1000).toFixed(1) + "s" : "—";
+        const when = new Date(r.startedAt).toLocaleString();
+        const lang = r.language ? (LANG[r.language] || String(r.language).toUpperCase()) : null;
+        const chips = [
+          `<span class="chip"><b>${esc(r.agentName || "Agent")}</b></span>`,
+          `<span class="chip">${esc(when)}</span>`,
+          `<span class="chip">Duration <b>${dur}</b></span>`,
+          `<span class="chip">Turns <b>${r.turnCount}</b></span>`,
+          r.bargeInCount ? `<span class="chip">Barge-ins <b>${r.bargeInCount}</b></span>` : "",
+          lang ? `<span class="chip">Language <b>${esc(lang)}</b></span>` : "",
+          r.variant ? `<span class="chip">Variant <b>${esc(r.variant)}</b></span>` : "",
+        ].join("");
+        const turns = (r.turns || [])
+          .map(
+            (t) =>
+              `<div class="bubble ${t.role === "caller" ? "caller" : "agent"} ${isArabic(t.text) ? "rtl" : ""}">
+                <div class="r">${t.role === "caller" ? "Caller" : "Agent"}${t.latencyMs ? " · " + t.latencyMs + "ms" : ""}</div>${esc(t.text)}</div>`,
+          )
+          .join("") || `<div class="state">No transcript turns.</div>`;
+        content.innerHTML = `<h1>Call report</h1><p class="sub">A read-along transcript of a real voice conversation.</p>
+          <div class="meta">${chips}</div><div class="thread">${turns}</div>`;
+      }
+      load();
+    </script>
+  </body>
+</html>

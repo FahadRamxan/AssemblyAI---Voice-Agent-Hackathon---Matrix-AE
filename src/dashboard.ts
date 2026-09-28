@@ -101,6 +101,18 @@ export async function handleDashboard(req: IncomingMessage, res: ServerResponse,
     if (path === "/calls" && method === "GET") {
       return json(res, 200, { calls: repo.listCalls(100) });
     }
+    const shareId = matchId(path, "/calls/", "/share");
+    if (shareId && method === "POST") {
+      const token = repo.shareCall(shareId);
+      if (!token) return json(res, 404, { error: "call_not_found" });
+      return json(res, 200, { token, path: `/r?t=${encodeURIComponent(token)}` });
+    }
+    const unshareId = matchId(path, "/calls/", "/unshare");
+    if (unshareId && method === "POST") {
+      if (!repo.getCall(unshareId)) return json(res, 404, { error: "call_not_found" });
+      repo.unshareCall(unshareId);
+      return json(res, 200, { unshared: true });
+    }
     const callId = matchId(path, "/calls/");
     if (callId && method === "GET") {
       const call = repo.getCall(callId);

@@ -583,18 +583,51 @@ async function tabCalls(v) {
     <div id="callDetail"></div>`;
   for (const tr of v.querySelectorAll("[data-call]")) {
     tr.onclick = async () => {
-      const { data } = await api("GET", `/api/dashboard/calls/${tr.dataset.call}`);
+      const callId = tr.dataset.call;
+      const { data } = await api("GET", `/api/dashboard/calls/${callId}`);
       const turns = data.turns || [];
-      $("#callDetail").innerHTML = `<div class="panel"><h3>Transcript</h3>${
-        turns
-          .map(
-            (t) =>
-              `<div class="bubble ${t.role === "caller" ? "caller" : "agent"} ${isArabic(t.text) ? "rtl" : ""}">
-                <div class="r">${t.role === "caller" ? "Caller" : "Agent"}${t.latency_ms ? " · " + t.latency_ms + "ms" : ""}</div>${esc(t.text)}</div>`,
-          )
-          .join("") || `<p class="muted">No transcript turns recorded.</p>`
-      }</div>`;
+      $("#callDetail").innerHTML = `<div class="panel">
+        <div class="panel-head"><h3>Transcript</h3><div id="shareCtl" class="share-ctl"></div></div>
+        ${
+          turns
+            .map(
+              (t) =>
+                `<div class="bubble ${t.role === "caller" ? "caller" : "agent"} ${isArabic(t.text) ? "rtl" : ""}">
+                  <div class="r">${t.role === "caller" ? "Caller" : "Agent"}${t.latency_ms ? " · " + t.latency_ms + "ms" : ""}</div>${esc(t.text)}</div>`,
+            )
+            .join("") || `<p class="muted">No transcript turns recorded.</p>`
+        }</div>`;
+      renderShareCtl(callId, data.call?.share_token || null);
       $("#callDetail").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    };
+  }
+}
+
+function renderShareCtl(callId, token) {
+  const el = $("#shareCtl");
+  if (!el) return;
+  if (!token) {
+    el.innerHTML = `<button class="btn sm ghost" id="shareBtn">🔗 Share report</button>`;
+    $("#shareBtn").onclick = async () => {
+      const { ok, data } = await api("POST", `/api/dashboard/calls/${callId}/share`);
+      if (!ok) return toast(errorText(data?.error));
+      renderShareCtl(callId, data.token);
+      toast("Public link created");
+    };
+  } else {
+    const url = `${location.origin}/r?t=${encodeURIComponent(token)}`;
+    el.innerHTML = `<div class="share-live">
+      <a href="${esc(url)}" target="_blank" class="share-url">${esc(url)}</a>
+      <button class="btn sm" id="copyShare">Copy</button>
+      <button class="btn sm danger" id="unshareBtn">Unshare</button>
+    </div>`;
+    $("#copyShare").onclick = () => navigator.clipboard?.writeText(url).then(() => toast("Link copied"));
+    $("#unshareBtn").onclick = async () => {
+      const { ok } = await api("POST", `/api/dashboard/calls/${callId}/unshare`);
+      if (ok) {
+        renderShareCtl(callId, null);
+        toast("Link revoked");
+      }
     };
   }
 }

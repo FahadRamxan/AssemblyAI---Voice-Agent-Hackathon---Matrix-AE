@@ -27,6 +27,7 @@ import { resolveEmbedKey, originAllowed, touchEmbedKeyUsage } from "./embed.js";
 import { createRecorder } from "./recorder.js";
 import { ensureDemoKey } from "./seed.js";
 import { handleDashboard } from "./dashboard.js";
+import { resolveSharedReport } from "./report.js";
 import { json, readJson, clientIp, str } from "./http.js";
 import { ConcurrencyTracker, RateLimiter, loadLimits } from "./limits.js";
 import {
@@ -226,6 +227,14 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse, deps: HttpD
     });
   }
 
+  // ---- public shared call report (bearer token = capability, no auth) ----
+  if (url.startsWith("/api/report/") && method === "GET") {
+    const token = decodeURIComponent(url.slice("/api/report/".length));
+    const rpt = resolveSharedReport(db, token);
+    if (!rpt) return json(res, 404, { error: "not_found" });
+    return json(res, 200, rpt);
+  }
+
   // ---- owner auth plane ----
   if (url === "/api/auth/signup" && method === "POST") return authSignup(req, res, db, authLimiter);
   if (url === "/api/auth/login" && method === "POST") return authLogin(req, res, db, authLimiter);
@@ -321,7 +330,9 @@ async function serveStatic(url: string, res: ServerResponse): Promise<void> {
         ? "dashboard.html"
         : url === "/widget"
           ? "index.html" // the embed iframe loads the widget UI (reads ?key=)
-          : url.replace(/^\/+/, "");
+          : url === "/r"
+            ? "report.html" // public shared-call report viewer (reads ?t=token)
+            : url.replace(/^\/+/, "");
   const filePath = normalize(resolve(publicDir, rel));
   // path-traversal guard
   if (!filePath.startsWith(publicDir + sep) && filePath !== publicDir) {
