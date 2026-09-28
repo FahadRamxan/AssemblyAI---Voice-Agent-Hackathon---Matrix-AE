@@ -26,8 +26,29 @@ import { sha256 } from "./db/ids.js";
 import { resolveEmbedKey, originAllowed, touchEmbedKeyUsage } from "./embed.js";
 import { createRecorder } from "./recorder.js";
 import { ensureDemoKey } from "./seed.js";
-import { ConcurrencyTracker, loadLimits } from "./limits.js";
+import { ConcurrencyTracker, RateLimiter, loadLimits } from "./limits.js";
+import {
+  signup,
+  login,
+  createSession,
+  revokeSession,
+  requireOwner,
+  principalContext,
+  parseCookies,
+  sessionCookie,
+  clearSessionCookie,
+  SignupError,
+  SESSION_COOKIE,
+} from "./auth.js";
 import { log } from "./logger.js";
+
+/** Shared request context for the HTTP router. */
+interface HttpDeps {
+  cfg: Config;
+  demoKey: string;
+  db: ReturnType<typeof getDb>;
+  authLimiter: RateLimiter;
+}
 
 const here = dirname(fileURLToPath(import.meta.url));
 const publicDir = resolve(here, "..", "public");
@@ -51,7 +72,15 @@ export function createServer(cfg: Config) {
   const limits = loadLimits();
   const concurrency = new ConcurrencyTracker(limits.maxConcurrentPerTenant);
 
-  const http = createHttp((req, res) => handleHttp(req, res, cfg, demoKey));
+  const authLimiter = new RateLimiter(20, 60_000); // 20 auth attempts / minute / ip
+  const deps: HttpDeps = { cfg, demoKey, db, authLimiter };
+
+  const http = createHttp((req, res) => {
+    void handleHttp(req, res, deps).catch((err) => {
+      log.error("http handler failed", { err: String(err) });
+      if (!res.headersSent) json(res, 500, { error: "server_error" });
+    });
+  });
   const wss = new WebSocketServer({ noServer: true });
 
   http.on("upgrade", (req, socket, head) => {
@@ -151,12 +180,9 @@ function attachSession(ws: WebSocket, ctx: SessionContext, onClose: () => void):
   });
 }
 
-async function handleHttp(
-  req: IncomingMessage,
-  res: ServerResponse,
-  cfg: Config,
-  demoKey: string,
-): Promise<void> {
+async function handleHttp(req: IncomingMessage, res: ServerResponse, deps: HttpDeps): Promise<void> {
+  const { cfg, demoKey, db, authLimiter } = deps;
+  const method = req.method ?? "GET";
   const url = (req.url ?? "/").split("?")[0] || "/";
 
   if (url === "/health") {
@@ -172,7 +198,119 @@ async function handleHttp(
       embedKey: demoKey, // the built-in demo page talks to the demo agent by its publishable key
     });
   }
+
+  // ---- owner auth plane ----
+  if (url === "/api/auth/signup" && method === "POST") return authSignup(req, res, db, authLimiter);
+  if (url === "/api/auth/login" && method === "POST") return authLogin(req, res, db, authLimiter);
+  if (url === "/api/auth/logout" && method === "POST") return authLogout(req, res, db);
+  if (url === "/api/auth/me" && method === "GET") return authMe(req, res, db);
+
   await serveStatic(url, res);
+}
+
+// ---- auth endpoints ---------------------------------------------------------
+
+async function authSignup(req: IncomingMessage, res: ServerResponse, db: HttpDeps["db"], rl: RateLimiter) {
+  const ip = clientIp(req);
+  if (!rl.check(`signup:${ip}`)) return json(res, 429, { error: "rate_limited" });
+  let body: Record<string, string>;
+  try {
+    body = await readJson(req);
+  } catch {
+    return json(res, 400, { error: "invalid_json" });
+  }
+  try {
+    const { user, tenant, principal } = signup(db, {
+      email: body.email ?? "",
+      password: body.password ?? "",
+      workspaceName: body.workspaceName ?? "",
+    });
+    const { token, expiresAt } = createSession(db, {
+      userId: principal.userId,
+      tenantId: principal.tenantId,
+      userAgent: req.headers["user-agent"] ?? null,
+      ip,
+    });
+    res.setHeader("Set-Cookie", sessionCookie(token, expiresAt));
+    return json(res, 201, { user: publicUser(user), tenant, token });
+  } catch (err) {
+    if (err instanceof SignupError) return json(res, 400, { error: err.code });
+    log.error("signup failed", { err: String(err) });
+    return json(res, 500, { error: "server_error" });
+  }
+}
+
+async function authLogin(req: IncomingMessage, res: ServerResponse, db: HttpDeps["db"], rl: RateLimiter) {
+  const ip = clientIp(req);
+  if (!rl.check(`login:${ip}`)) return json(res, 429, { error: "rate_limited" });
+  let body: Record<string, string>;
+  try {
+    body = await readJson(req);
+  } catch {
+    return json(res, 400, { error: "invalid_json" });
+  }
+  const principal = login(db, body.email ?? "", body.password ?? "");
+  if (!principal) return json(res, 401, { error: "invalid_credentials" });
+  const ctx = principalContext(db, principal);
+  if (!ctx) return json(res, 401, { error: "invalid_credentials" });
+  const { token, expiresAt } = createSession(db, {
+    userId: principal.userId,
+    tenantId: principal.tenantId,
+    userAgent: req.headers["user-agent"] ?? null,
+    ip,
+  });
+  res.setHeader("Set-Cookie", sessionCookie(token, expiresAt));
+  return json(res, 200, { user: ctx.user, tenant: ctx.tenant, token });
+}
+
+function authLogout(req: IncomingMessage, res: ServerResponse, db: HttpDeps["db"]) {
+  const cookies = parseCookies(req.headers.cookie);
+  revokeSession(db, cookies[SESSION_COOKIE] ?? "");
+  res.setHeader("Set-Cookie", clearSessionCookie());
+  res.writeHead(204).end();
+}
+
+function authMe(req: IncomingMessage, res: ServerResponse, db: HttpDeps["db"]) {
+  const principal = requireOwner(db, req.headers);
+  if (!principal) return json(res, 401, { error: "unauthenticated" });
+  const ctx = principalContext(db, principal);
+  if (!ctx) return json(res, 401, { error: "unauthenticated" });
+  return json(res, 200, ctx);
+}
+
+function publicUser(u: { id: string; email: string; name: string | null; role: string }) {
+  return { id: u.id, email: u.email, name: u.name, role: u.role };
+}
+
+function clientIp(req: IncomingMessage): string {
+  const xff = req.headers["x-forwarded-for"];
+  if (typeof xff === "string" && xff.length) return xff.split(",")[0]?.trim() ?? "unknown";
+  return req.socket.remoteAddress ?? "unknown";
+}
+
+async function readJson(req: IncomingMessage, limitBytes = 64 * 1024): Promise<Record<string, string>> {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks: Buffer[] = [];
+    req.on("data", (c: Buffer) => {
+      size += c.length;
+      if (size > limitBytes) {
+        reject(new Error("body too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on("end", () => {
+      if (!chunks.length) return resolve({});
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      } catch {
+        reject(new Error("invalid json"));
+      }
+    });
+    req.on("error", reject);
+  });
 }
 
 async function serveStatic(url: string, res: ServerResponse): Promise<void> {
