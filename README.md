@@ -1,5 +1,7 @@
 <div align="center">
 
+![Raabta Live](docs/cover.png)
+
 # ◉ Raabta Live
 
 ### A real-time voice agent you can talk over — built on AssemblyAI Universal-Streaming

@@ -1,0 +1,94 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * { margin: 0; box-sizing: border-box; }
+      html, body { width: 1200px; height: 630px; }
+      body {
+        background:
+          radial-gradient(900px 500px at 78% -10%, #1b2c49 0%, transparent 60%),
+          radial-gradient(700px 500px at 10% 120%, #12233b 0%, transparent 55%),
+          #0a0e14;
+        color: #e7edf5;
+        font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+        padding: 64px 72px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        overflow: hidden;
+      }
+      .top { display: flex; align-items: center; gap: 16px; }
+      .logo {
+        font-size: 40px; color: #2dd4bf;
+        text-shadow: 0 0 24px rgba(45, 212, 191, 0.8);
+      }
+      .kicker { color: #8ea0b5; font-size: 20px; letter-spacing: 0.5px; }
+      .by { margin-left: auto; color: #8ea0b5; font-size: 18px; }
+      .by b { color: #cdd8e6; }
+
+      h1 {
+        font-size: 92px; font-weight: 800; line-height: 1.02;
+        letter-spacing: -1.5px;
+        background: linear-gradient(120deg, #ffffff 0%, #9fe9df 55%, #8b8ff6 100%);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+      }
+      .sub { font-size: 30px; color: #cdd8e6; margin-top: 14px; font-weight: 600; }
+      .sub .dim { color: #8ea0b5; font-weight: 400; }
+
+      .row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+      .pipe {
+        display: flex; align-items: center; gap: 12px;
+        font-size: 21px; color: #dfe8f2;
+      }
+      .chip {
+        border: 1px solid rgba(255,255,255,0.14);
+        background: rgba(255,255,255,0.04);
+        border-radius: 999px; padding: 10px 18px; font-size: 20px;
+      }
+      .chip.aai { border-color: rgba(45,212,191,0.5); color: #9fe9df; background: rgba(45,212,191,0.08); }
+      .arrow { color: #2dd4bf; font-size: 22px; }
+      .badges { display: flex; gap: 12px; margin-top: 4px; }
+      .badge {
+        font-size: 18px; padding: 8px 16px; border-radius: 10px;
+        background: linear-gradient(135deg, rgba(45,212,191,0.16), rgba(99,102,241,0.16));
+        border: 1px solid rgba(45,212,191,0.28); color: #cdeee9;
+      }
+      .lang { color: #8ea0b5; font-size: 20px; }
+      .lang b { color: #e7edf5; }
+    </style>
+  </head>
+  <body>
+    <div class="top">
+      <span class="logo">◉</span>
+      <span class="kicker">real-time voice agent</span>
+      <span class="by">by <b>Matrix&nbsp;AE</b></span>
+    </div>
+
+    <div>
+      <h1>Raabta&nbsp;Live</h1>
+      <div class="sub">
+        Talk to it. Interrupt it. Read along.
+        <span class="dim">&nbsp;— voice AI built on AssemblyAI Universal-Streaming</span>
+      </div>
+    </div>
+
+    <div class="row" style="gap: 22px">
+      <div class="pipe">
+        <span class="chip">🎙 mic</span><span class="arrow">→</span>
+        <span class="chip aai">AssemblyAI STT</span><span class="arrow">→</span>
+        <span class="chip">LLM</span><span class="arrow">→</span>
+        <span class="chip">🔊 voice</span>
+      </div>
+    </div>
+
+    <div class="row" style="justify-content: space-between">
+      <div class="badges">
+        <span class="badge">⚡ barge-in</span>
+        <span class="badge">📝 read-along transcript</span>
+        <span class="badge">🗣 streaming turns</span>
+      </div>
+      <div class="lang">English&nbsp; ⇄ &nbsp;<b>العربية</b></div>
+    </div>
+  </body>
+</html>
