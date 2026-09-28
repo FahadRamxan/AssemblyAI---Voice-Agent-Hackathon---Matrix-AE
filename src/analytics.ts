@@ -9,6 +9,9 @@
 import type { Db } from "./db/db.js";
 import { now } from "./db/ids.js";
 
+/** AssemblyAI Universal-Streaming list price ≈ $0.15/hour. Estimate only. */
+export const ASSEMBLYAI_USD_PER_MIN = 0.15 / 60;
+
 export interface Analytics {
   totalCalls: number;
   callsLast7Days: number;
@@ -17,9 +20,16 @@ export interface Analytics {
   totalBargeIns: number;
   bargeInRate: number; // barge-ins per call
   languageSplit: { en: number; ar: number; unknown: number };
+  detectedLanguages: Array<{ code: string; calls: number }>; // AssemblyAI per-turn detection, desc
   latencyMsP50: number | null;
   latencyMsP95: number | null;
   callsPerDay: Array<{ date: string; calls: number }>; // last 14 days, zero-filled
+  usage: {
+    streamingMinutesMonth: number; // this calendar month (UTC)
+    streamingMinutesTotal: number;
+    estCostMonthUsd: number; // minutes * AssemblyAI streaming rate (estimate)
+    usdPerMin: number;
+  };
 }
 
 /** Nearest-rank percentile of an ascending-sorted array (0..100). */
@@ -84,6 +94,23 @@ export function computeAnalytics(db: Db, tenantId: string): Analytics {
     callsPerDay.push({ date, calls: counts.get(date) ?? 0 });
   }
 
+  // AssemblyAI-detected languages (multilingual agents), most common first.
+  const detRows = db
+    .prepare(
+      "SELECT detected_lang code, COUNT(*) c FROM calls WHERE tenant_id = ? AND detected_lang IS NOT NULL GROUP BY detected_lang ORDER BY c DESC",
+    )
+    .all(tenantId) as Array<{ code: string; c: number }>;
+  const detectedLanguages = detRows.map((r) => ({ code: r.code, calls: num(r.c) }));
+
+  // Streaming-minute usage + estimated AssemblyAI cost (from real captured durations).
+  const monthStart = Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1);
+  const durTotal = db.prepare("SELECT COALESCE(SUM(duration_ms),0) ms FROM calls WHERE tenant_id = ?").get(tenantId) as { ms: number };
+  const durMonth = db
+    .prepare("SELECT COALESCE(SUM(duration_ms),0) ms FROM calls WHERE tenant_id = ? AND started_at >= ?")
+    .get(tenantId, monthStart) as { ms: number };
+  const minutesMonth = Math.round((num(durMonth.ms) / 60000) * 10) / 10;
+  const minutesTotal = Math.round((num(durTotal.ms) / 60000) * 10) / 10;
+
   const totalCalls = num(total.c);
   const totalBargeIns = num(agg.barge);
   return {
@@ -94,8 +121,15 @@ export function computeAnalytics(db: Db, tenantId: string): Analytics {
     totalBargeIns,
     bargeInRate: totalCalls > 0 ? Math.round((totalBargeIns / totalCalls) * 100) / 100 : 0,
     languageSplit,
+    detectedLanguages,
     latencyMsP50: percentile(latencies, 50),
     latencyMsP95: percentile(latencies, 95),
     callsPerDay,
+    usage: {
+      streamingMinutesMonth: minutesMonth,
+      streamingMinutesTotal: minutesTotal,
+      estCostMonthUsd: Math.round(minutesMonth * ASSEMBLYAI_USD_PER_MIN * 100) / 100,
+      usdPerMin: ASSEMBLYAI_USD_PER_MIN,
+    },
   };
 }

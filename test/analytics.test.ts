@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { openDb } from "../src/db/db.ts";
 import { createTenant, scopedRepo } from "../src/db/repo.ts";
 import { createRecorder } from "../src/recorder.ts";
-import { computeAnalytics, percentile } from "../src/analytics.ts";
+import { computeAnalytics, percentile, ASSEMBLYAI_USD_PER_MIN } from "../src/analytics.ts";
 
 test("percentile (nearest-rank)", () => {
   assert.equal(percentile([], 50), null);
@@ -59,6 +59,35 @@ test("analytics are computed from captured calls and scoped per tenant", () => {
   const b = computeAnalytics(db, B.id);
   assert.equal(b.totalCalls, 1);
   assert.equal(b.totalBargeIns, 0);
+
+  db.close();
+});
+
+test("analytics surface AssemblyAI-detected languages + streaming usage/cost", () => {
+  const db = openDb(":memory:");
+  const T = createTenant(db, { name: "T" });
+  const repo = scopedRepo(db, T.id);
+  const agent = repo.createAgent({ name: "a", persona: "p", language: "multi" });
+
+  // Two Spanish calls + one French — as AssemblyAI would tag them on finalize.
+  for (const code of ["es", "es", "fr"]) {
+    const c = repo.createCall({ agentId: agent.id });
+    const r = createRecorder(db, T.id, c.id);
+    r.callerTurn("hola", code);
+    r.agentReply("hola", code, 120);
+    r.finalize("client_close", code === "es" ? "en" : "en", code); // detectedLang = the AssemblyAI code
+  }
+
+  const a = computeAnalytics(db, T.id);
+  assert.deepEqual(a.detectedLanguages, [
+    { code: "es", calls: 2 },
+    { code: "fr", calls: 1 },
+  ]);
+  // usage shape is real (derived from captured durations) + cost = minutes * rate.
+  assert.equal(a.usage.usdPerMin, ASSEMBLYAI_USD_PER_MIN);
+  assert.equal(typeof a.usage.streamingMinutesMonth, "number");
+  assert.equal(typeof a.usage.streamingMinutesTotal, "number");
+  assert.equal(a.usage.estCostMonthUsd, Math.round(a.usage.streamingMinutesMonth * ASSEMBLYAI_USD_PER_MIN * 100) / 100);
 
   db.close();
 });

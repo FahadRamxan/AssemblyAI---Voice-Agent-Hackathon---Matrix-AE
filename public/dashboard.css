@@ -899,6 +899,57 @@ iframe.talk {
   height: 100%;
 }
 
+/* languages-detected rows */
+.langrows {
+  display: grid;
+  gap: 12px;
+}
+.langrow-top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  margin-bottom: 5px;
+}
+.langrow-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.langrow-name i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+/* usage / cost meter */
+.usage-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.usage-v {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.6px;
+  color: var(--accent);
+}
+.usage-u {
+  color: var(--muted);
+  font-size: 13px;
+}
+.usage-cost {
+  margin-top: 8px;
+  font-size: 14px;
+}
+.usage-cost b {
+  color: var(--text);
+}
+.usage-foot {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
 /* ---- brand cohesion with the landing page ---- */
 .aurora {
   position: fixed;

@@ -229,8 +229,47 @@ async function tabHome(v) {
           <span class="lg"><i style="background:rgba(255,255,255,.18)"></i>Other ${ls.unknown}</span>
         </div>
       </div>
+    </div>
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-head"><h3>Languages detected</h3><span class="tag">AssemblyAI live</span></div>
+        ${detectedLanguagesHtml(a.detectedLanguages || [])}
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>Usage this month</h3></div>
+        ${usageHtml(a.usage)}
+      </div>
     </div>`;
   wireEmptyCtas(v);
+}
+
+const LANG_NAMES = { en: "English", es: "Spanish", fr: "French", de: "German", it: "Italian", pt: "Portuguese", ar: "Arabic" };
+const langName = (c) => LANG_NAMES[c] || String(c || "").toUpperCase();
+
+function detectedLanguagesHtml(list) {
+  if (!list.length)
+    return `<p class="muted">No language detection yet. Set an agent to <b>Multilingual</b> and callers' languages (EN/ES/FR/DE/IT/PT) will break down here.</p>`;
+  const total = Math.max(1, list.reduce((s, d) => s + d.calls, 0));
+  const palette = ["var(--accent)", "var(--accent2)", "#f59e0b", "#ec4899", "#38bdf8", "#a3e635", "#f87171"];
+  return `<div class="langrows">${list
+    .map((d, i) => {
+      const pct = Math.round((d.calls / total) * 100);
+      const col = palette[i % palette.length];
+      return `<div class="langrow">
+        <div class="langrow-top"><span class="langrow-name"><i style="background:${col}"></i>${esc(langName(d.code))}</span><span class="muted">${pct}% · ${d.calls}</span></div>
+        <div class="bar"><span style="width:${pct}%;background:${col}"></span></div>
+      </div>`;
+    })
+    .join("")}</div>`;
+}
+
+function usageHtml(u) {
+  if (!u) return `<p class="muted">No usage yet.</p>`;
+  return `<div class="usage">
+    <div class="usage-main"><span class="usage-v">${u.streamingMinutesMonth}</span><span class="usage-u">min streamed</span></div>
+    <div class="usage-cost">≈ <b>$${u.estCostMonthUsd.toFixed(2)}</b> est. AssemblyAI streaming this month</div>
+    <div class="usage-foot muted">${u.streamingMinutesTotal} min all-time · rate $${u.usdPerMin.toFixed(4)}/min (est.)</div>
+  </div>`;
 }
 
 function areaChart(days) {

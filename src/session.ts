@@ -47,7 +47,8 @@ export interface CallRecorder {
   callerTurn(text: string, lang: string): void;
   agentReply(text: string, lang: string, latencyMs: number): void;
   bargeIn(): void;
-  finalize(reason: string, languagePrimary: string | null): void;
+  /** detectedLang = AssemblyAI's detected language code for the call (multilingual agents), else null. */
+  finalize(reason: string, languagePrimary: string | null, detectedLang?: string | null): void;
 }
 
 export interface SessionContext {
@@ -72,6 +73,7 @@ export class VoiceSession {
   private turnStartAt = 0;
   private firstChunkAt = 0;
   private readonly langTally = { en: 0, ar: 0 };
+  private readonly detectedTally = new Map<string, number>(); // AssemblyAI language_code -> count
 
   constructor(
     private readonly browser: WebSocket,
@@ -160,6 +162,8 @@ export class VoiceSession {
     const lang = detectLang(text);
     if (lang === "ar") this.langTally.ar++;
     else this.langTally.en++;
+    // AssemblyAI's own per-turn language detection (multilingual agents only).
+    if (meta?.languageCode) this.detectedTally.set(meta.languageCode, (this.detectedTally.get(meta.languageCode) ?? 0) + 1);
     try {
       this.ctx.recorder?.callerTurn(text, lang);
     } catch (err) {
@@ -281,8 +285,12 @@ export class VoiceSession {
     this.abortInflight();
     this.stt.close();
     const primary = this.langTally.ar > this.langTally.en ? "ar" : this.langTally.en > 0 ? "en" : null;
+    // Most-frequently detected language across the call (AssemblyAI multilingual).
+    let detected: string | null = null;
+    let best = 0;
+    for (const [code, n] of this.detectedTally) if (n > best) ((best = n), (detected = code));
     try {
-      this.ctx.recorder?.finalize(reason, primary);
+      this.ctx.recorder?.finalize(reason, primary, detected);
     } catch (err) {
       log.warn("recorder finalize failed", { err: String(err) });
     }

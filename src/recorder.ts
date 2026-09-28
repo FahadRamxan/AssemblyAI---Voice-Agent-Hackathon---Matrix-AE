@@ -47,8 +47,8 @@ export function createRecorder(db: Db, tenantId: string, callId: string): CallRe
     bargeIn() {
       safe(() => repo.incBargeIn(callId));
     },
-    finalize(reason, languagePrimary) {
-      safe(() => repo.finalizeCall(callId, { endedReason: reason, languagePrimary }));
+    finalize(reason, languagePrimary, detectedLang) {
+      safe(() => repo.finalizeCall(callId, { endedReason: reason, languagePrimary, detectedLang }));
     },
   };
 }
