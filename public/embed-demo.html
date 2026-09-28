@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Northwind Clinic — (embed demo)</title>
+    <style>
+      body {
+        margin: 0;
+        font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        color: #1a2230;
+        background: #f6f8fb;
+      }
+      header {
+        background: #fff;
+        border-bottom: 1px solid #e6ebf2;
+        padding: 18px 28px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .logo {
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+        background: linear-gradient(135deg, #2dd4bf, #6366f1);
+      }
+      main {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 48px 28px;
+      }
+      h1 {
+        font-size: 34px;
+        margin: 0 0 8px;
+      }
+      .muted {
+        color: #64748b;
+      }
+      .note {
+        margin-top: 28px;
+        padding: 14px 16px;
+        background: #eef6ff;
+        border: 1px solid #d5e6fb;
+        border-radius: 10px;
+        font-size: 14px;
+      }
+      code {
+        background: #0a0e14;
+        color: #9fe9df;
+        padding: 2px 6px;
+        border-radius: 6px;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="logo"></div>
+      <strong>Northwind Clinic</strong>
+    </header>
+    <main>
+      <h1>Book an appointment, any time.</h1>
+      <p class="muted">
+        This is a plain third-party website. The floating voice button in the corner is a Raabta Live agent,
+        added with a single <code>&lt;script&gt;</code> tag — no other code on this page.
+      </p>
+      <p>
+        Our team is here Monday to Friday, 9am–5pm. For anything else, tap <strong>Talk to us</strong> and our
+        AI receptionist will help you right away.
+      </p>
+      <div class="note" id="note"></div>
+    </main>
+
+    <script>
+      // Demo harness: inject the embed loader with a key from ?key=pk_live_...
+      // (On a real site you'd hardcode your own key in the snippet.)
+      var key = new URLSearchParams(location.search).get("key");
+      var note = document.getElementById("note");
+      if (key) {
+        var s = document.createElement("script");
+        s.src = "/embed.js";
+        s.async = true;
+        s.setAttribute("data-agent-key", key);
+        s.setAttribute("data-label", "Talk to us");
+        document.body.appendChild(s);
+        note.innerHTML =
+          "✅ Embedded with your agent key. The one-line snippet is: " +
+          '<br /><code>&lt;script src="' +
+          location.origin +
+          '/embed.js" data-agent-key="' +
+          key.slice(0, 12) +
+          '…" async&gt;&lt;/script&gt;</code>';
+      } else {
+        note.innerHTML =
+          "Add <code>?key=pk_live_…</code> to this URL (your agent's publishable key from the dashboard) to see the live widget.";
+      }
+    </script>
+  </body>
+</html>

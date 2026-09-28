@@ -289,7 +289,14 @@ function publicUser(u: { id: string; email: string; name: string | null; role: s
 
 
 async function serveStatic(url: string, res: ServerResponse): Promise<void> {
-  const rel = url === "/" ? "index.html" : url.replace(/^\/+/, "");
+  const rel =
+    url === "/"
+      ? "index.html"
+      : url === "/dashboard"
+        ? "dashboard.html"
+        : url === "/widget"
+          ? "index.html" // the embed iframe loads the widget UI (reads ?key=)
+          : url.replace(/^\/+/, "");
   const filePath = normalize(resolve(publicDir, rel));
   // path-traversal guard
   if (!filePath.startsWith(publicDir + sep) && filePath !== publicDir) {
