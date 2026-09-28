@@ -108,7 +108,8 @@ CREATE TABLE IF NOT EXISTS calls (
   client_ip_hash TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_calls_tenant_started ON calls(tenant_id, started_at DESC);
-CREATE INDEX IF NOT EXISTS idx_calls_share ON calls(share_token);
+-- idx_calls_share is created in runAdditiveMigrations() AFTER the share_token
+-- column is guaranteed to exist (older DBs add the column there first).
 
 -- The persisted read-along transcript, one row per finalized turn.
 -- tenant_id denormalized so a transcript read is scoped without a join.
