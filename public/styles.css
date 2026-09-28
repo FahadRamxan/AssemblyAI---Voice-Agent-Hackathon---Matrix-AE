@@ -457,6 +457,9 @@ body[data-state="error"] {
 }
 
 /* ---- latency HUD: live AssemblyAI time-to-first-word ---- */
+.latency-hud[hidden] {
+  display: none; /* author rule so the `hidden` attribute wins over display:flex below */
+}
 .latency-hud {
   position: fixed;
   top: 16px;
