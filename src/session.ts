@@ -117,6 +117,7 @@ export class VoiceSession {
     const greeting = this.ctx.resolved.greeting;
     if (greeting) {
       this.convo.addAssistant(greeting);
+      this.ctx.recorder?.agentReply(greeting, detectLang(greeting), 0); // seq 0, latency null
       void this.speak(greeting, ++this.turnSeq);
     }
   }

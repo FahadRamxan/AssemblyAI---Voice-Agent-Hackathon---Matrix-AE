@@ -24,6 +24,7 @@ import { getDb } from "./db/db.js";
 import { scopedRepo } from "./db/repo.js";
 import { sha256 } from "./db/ids.js";
 import { resolveEmbedKey, originAllowed, touchEmbedKeyUsage } from "./embed.js";
+import { createRecorder } from "./recorder.js";
 import { ensureDemoKey } from "./seed.js";
 import { ConcurrencyTracker, loadLimits } from "./limits.js";
 import { log } from "./logger.js";
@@ -97,6 +98,7 @@ export function createServer(cfg: Config) {
         platform: cfg,
         callId,
         sessionMaxMs: limits.sessionMaxMs,
+        recorder: createRecorder(db, resolved.tenantId, callId),
       };
       attachSession(ws, ctx, () => concurrency.release(resolved.tenantId));
       log.info("call connected", { tenant: resolved.tenantId, agent: resolved.agentId, callId });
