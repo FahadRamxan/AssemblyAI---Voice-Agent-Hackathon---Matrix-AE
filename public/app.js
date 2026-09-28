@@ -108,6 +108,7 @@ function handleServerMessage(raw) {
       setStatus("speaking", "speaking");
       break;
     case "tts_stop":
+      if (m.reason === "barge_in") flushPlayback(); // caller cut in — drop queued audio now
       setStatus("listening", "listening");
       break;
     case "status":
@@ -120,9 +121,67 @@ function handleServerMessage(raw) {
   }
 }
 
-// TTS audio arrives as binary frames — playback is wired in app-playback code.
-function onTtsAudio(_arrayBuffer) {
-  /* placeholder until gapless playback lands */
+// --------------------------------------------------------------------------
+// TTS playback — gapless scheduling of streamed 24 kHz PCM, with barge-in flush
+// --------------------------------------------------------------------------
+const TTS_RATE = 24000;
+let playCtx = null;
+let playHead = 0; // next scheduled start time on the playback clock
+let sources = new Set(); // live buffer sources, so barge-in can stop them
+let leftoverByte = null; // odd trailing byte carried between chunks
+
+function playbackCtx() {
+  // Reuse the mic context if we have one; otherwise make a dedicated one.
+  if (audioCtx) return audioCtx;
+  if (!playCtx) playCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (playCtx.state === "suspended") void playCtx.resume();
+  return playCtx;
+}
+
+function onTtsAudio(arrayBuffer) {
+  const incoming = new Uint8Array(arrayBuffer);
+  // Stitch any odd byte carried from the previous chunk so Int16 stays aligned.
+  let bytes = incoming;
+  if (leftoverByte) {
+    bytes = new Uint8Array(leftoverByte.length + incoming.length);
+    bytes.set(leftoverByte, 0);
+    bytes.set(incoming, leftoverByte.length);
+    leftoverByte = null;
+  }
+  const usable = bytes.length - (bytes.length % 2);
+  if (usable < bytes.length) leftoverByte = bytes.slice(usable);
+  if (usable === 0) return;
+
+  const pcm = new Int16Array(bytes.buffer, bytes.byteOffset, usable / 2);
+  const ctx = playbackCtx();
+  const buf = ctx.createBuffer(1, pcm.length, TTS_RATE);
+  const ch = buf.getChannelData(0);
+  for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
+
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  const startAt = Math.max(ctx.currentTime, playHead);
+  src.start(startAt);
+  playHead = startAt + buf.duration;
+  sources.add(src);
+  src.onended = () => sources.delete(src);
+}
+
+/** Stop everything currently scheduled — used on barge-in and on hang-up. */
+function flushPlayback() {
+  for (const src of sources) {
+    try {
+      src.onended = null;
+      src.stop();
+      src.disconnect();
+    } catch {
+      /* already stopped */
+    }
+  }
+  sources.clear();
+  leftoverByte = null;
+  playHead = 0;
 }
 
 // --------------------------------------------------------------------------
@@ -196,6 +255,7 @@ function endCall() {
     /* ignore */
   }
   micLive = false;
+  flushPlayback();
   workletNode?.disconnect();
   micStream?.getTracks().forEach((t) => t.stop());
   audioCtx?.close();
