@@ -39,6 +39,44 @@ export interface SttOptions {
 
 const ENDPOINT = "wss://streaming.assemblyai.com/v3/ws";
 
+export type SttInterpretation =
+  | { kind: "ready"; id: string }
+  | { kind: "partial"; text: string }
+  | { kind: "final"; text: string }
+  | { kind: "termination" }
+  | { kind: "ignore" };
+
+/**
+ * Pure interpreter for an AssemblyAI v3 inbound message. Kept separate from
+ * the socket so the tricky bits — partial vs final, and the double-final
+ * dedupe when format_turns is on — are unit-testable without a network.
+ */
+export function interpretSttMessage(raw: string, requireFormatted: boolean): SttInterpretation {
+  let msg: Record<string, unknown>;
+  try {
+    msg = JSON.parse(raw);
+  } catch {
+    return { kind: "ignore" };
+  }
+  switch (msg.type) {
+    case "Begin":
+      return { kind: "ready", id: String(msg.id ?? "") };
+    case "Turn": {
+      const text = String(msg.transcript ?? "").trim();
+      if (!text) return { kind: "ignore" };
+      const endOfTurn = msg.end_of_turn === true;
+      const formatted = msg.turn_is_formatted === true;
+      if (endOfTurn && (!requireFormatted || formatted)) return { kind: "final", text };
+      if (!endOfTurn) return { kind: "partial", text };
+      return { kind: "ignore" }; // unformatted end_of_turn — wait for the formatted one
+    }
+    case "Termination":
+      return { kind: "termination" };
+    default:
+      return { kind: "ignore" };
+  }
+}
+
 export class AssemblyAiStt {
   private ws?: WebSocket;
   private events: SttEvents = {};
@@ -78,46 +116,26 @@ export class AssemblyAiStt {
   }
 
   private onMessage(data: WebSocket.RawData): void {
-    let msg: Record<string, unknown>;
-    try {
-      msg = JSON.parse(data.toString());
-    } catch {
-      return; // v3 control frames are always JSON text; ignore anything else
-    }
-    switch (msg.type) {
-      case "Begin": {
-        const id = String(msg.id ?? "");
-        log.debug("assemblyai session begin", { id });
-        this.events.onReady?.(id);
+    const result = interpretSttMessage(data.toString(), this.opts.formatTurns ?? true);
+    switch (result.kind) {
+      case "ready":
+        log.debug("assemblyai session begin", { id: result.id });
+        this.events.onReady?.(result.id);
         break;
-      }
-      case "Turn": {
-        const transcript = String(msg.transcript ?? "").trim();
-        const endOfTurn = msg.end_of_turn === true;
-        const formatted = msg.turn_is_formatted === true;
-        if (!transcript) break;
-        // With format_turns=true AssemblyAI emits the final TWICE — first
-        // unformatted, then formatted. Act on the clean formatted one only,
-        // or your transcript (and LLM calls) double. When formatting is off,
-        // fire on the plain end_of_turn.
-        const requireFormatted = this.opts.formatTurns ?? true;
-        if (endOfTurn && (!requireFormatted || formatted)) {
-          this.lastPartial = "";
-          this.events.onFinal?.(transcript);
-        } else if (!endOfTurn && transcript !== this.lastPartial) {
-          this.lastPartial = transcript;
-          this.events.onPartial?.(transcript);
+      case "final":
+        this.lastPartial = "";
+        this.events.onFinal?.(result.text);
+        break;
+      case "partial":
+        if (result.text !== this.lastPartial) {
+          this.lastPartial = result.text;
+          this.events.onPartial?.(result.text);
         }
         break;
-      }
-      case "Termination": {
-        log.debug("assemblyai termination", {
-          audio: msg.audio_duration_seconds,
-          session: msg.session_duration_seconds,
-        });
+      case "termination":
+        log.debug("assemblyai termination");
         break;
-      }
-      default:
+      case "ignore":
         break;
     }
   }

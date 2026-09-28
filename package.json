@@ -13,7 +13,7 @@
     "build": "tsc -p tsconfig.json",
     "serve": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --import tsx --test test/*.test.ts"
   },
   "dependencies": {
     "ws": "^8.18.0"
