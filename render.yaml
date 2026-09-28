@@ -1,0 +1,24 @@
+# Deploy to Render (free tier supports WebSockets + auto HTTPS, which the
+# browser mic requires). Set the API keys in the Render dashboard — they are
+# marked sync:false so they never live in git.
+services:
+  - type: web
+    name: raabta-live
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm run serve
+    healthCheckPath: /health
+    envVars:
+      - key: ASSEMBLYAI_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVENLABS_VOICE_ID
+        sync: false
+      - key: AGENT_GREETING
+        value: Thanks for calling Raabta. How can I help you today?
