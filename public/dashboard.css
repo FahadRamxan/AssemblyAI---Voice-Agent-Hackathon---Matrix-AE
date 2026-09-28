@@ -1320,3 +1320,41 @@ iframe.talk {
 .live-line.agent {
   background: linear-gradient(135deg, rgba(45, 212, 191, 0.14), rgba(99, 102, 241, 0.1));
 }
+
+/* ---- persona A/B testing ---- */
+.ab-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 14px 0 4px;
+  color: var(--text);
+  cursor: pointer;
+}
+.ab-toggle input {
+  width: auto;
+}
+.f-ab-wrap {
+  border-left: 2px solid var(--border);
+  padding-left: 14px;
+  margin-top: 6px;
+}
+.ab-compare {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.ab-compare table {
+  font-size: 13px;
+}
+.ab-compare th,
+.ab-compare td {
+  padding: 9px 12px;
+}
+.ab-compare th {
+  color: var(--accent);
+}
+.ab-hint {
+  margin-top: 10px;
+  font-size: 13px;
+}

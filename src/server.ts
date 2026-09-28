@@ -23,7 +23,7 @@ import { MIC_SAMPLE_RATE, TTS_SAMPLE_RATE, type ClientMessage } from "./protocol
 import { getDb } from "./db/db.js";
 import { scopedRepo } from "./db/repo.js";
 import { sha256 } from "./db/ids.js";
-import { resolveEmbedKey, originAllowed, touchEmbedKeyUsage } from "./embed.js";
+import { resolveEmbedKey, originAllowed, touchEmbedKeyUsage, chooseVariant } from "./embed.js";
 import { createRecorder } from "./recorder.js";
 import { ensureDemoKey } from "./seed.js";
 import { handleDashboard } from "./dashboard.js";
@@ -105,7 +105,8 @@ export function createServer(cfg: Config) {
     // 3) Per-tenant concurrent-call cap.
     if (!concurrency.tryAcquire(resolved.tenantId)) return reject(socket, 429, "too many concurrent calls");
 
-    // 4) Create the call row (stamped with the key-resolved tenant/agent).
+    // 4) Pick the persona variant (A/B) + create the call row (stamped tenant/agent/variant).
+    const { variant, persona } = chooseVariant(resolved);
     let callId: string;
     try {
       const repo = scopedRepo(db, resolved.tenantId);
@@ -115,6 +116,7 @@ export function createServer(cfg: Config) {
         embedKeyId: resolved.embedKeyId,
         origin: origin ?? null,
         clientIpHash: ipHash,
+        variant,
       });
       callId = call.id;
       touchEmbedKeyUsage(db, resolved.embedKeyId);
@@ -126,7 +128,7 @@ export function createServer(cfg: Config) {
 
     wss.handleUpgrade(req, socket, head, (ws) => {
       const ctx: SessionContext = {
-        resolved,
+        resolved: { ...resolved, persona }, // run the chosen A/B variant's persona
         platform: cfg,
         callId,
         sessionMaxMs: limits.sessionMaxMs,

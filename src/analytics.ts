@@ -46,6 +46,45 @@ function isoDay(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
 }
 
+export interface VariantStats {
+  variant: string; // 'A' | 'B'
+  calls: number;
+  avgDurationMs: number;
+  avgTurns: number;
+  bargeInRate: number;
+  latencyMsP50: number | null;
+}
+
+/** Per-variant metrics for one agent's A/B test (only calls whose variant is set). */
+export function computeAbStats(db: Db, tenantId: string, agentId: string): VariantStats[] {
+  const n = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  const rows = db
+    .prepare(
+      `SELECT variant, COUNT(*) calls, AVG(duration_ms) avgDur, AVG(turn_count) avgTurns, SUM(barge_in_count) barge
+       FROM calls WHERE tenant_id = ? AND agent_id = ? AND variant IS NOT NULL GROUP BY variant ORDER BY variant`,
+    )
+    .all(tenantId, agentId) as Array<{ variant: string; calls: number; avgDur: number | null; avgTurns: number | null; barge: number | null }>;
+  return rows.map((r) => {
+    const lat = (
+      db
+        .prepare(
+          `SELECT tt.latency_ms lat FROM transcript_turns tt JOIN calls c ON c.id = tt.call_id
+           WHERE c.tenant_id = ? AND c.agent_id = ? AND c.variant = ? AND tt.latency_ms IS NOT NULL ORDER BY tt.latency_ms ASC`,
+        )
+        .all(tenantId, agentId, r.variant) as Array<{ lat: number }>
+    ).map((x) => x.lat);
+    const calls = n(r.calls);
+    return {
+      variant: r.variant,
+      calls,
+      avgDurationMs: Math.round(n(r.avgDur)),
+      avgTurns: Math.round(n(r.avgTurns) * 10) / 10,
+      bargeInRate: calls > 0 ? Math.round((n(r.barge) / calls) * 100) / 100 : 0,
+      latencyMsP50: percentile(lat, 50),
+    };
+  });
+}
+
 export function computeAnalytics(db: Db, tenantId: string): Analytics {
   const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 

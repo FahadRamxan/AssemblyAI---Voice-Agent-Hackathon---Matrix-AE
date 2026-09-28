@@ -533,9 +533,19 @@ function renderAgentCard(list, ag, isNew) {
     <input class="f-voice" value="${esc(ag?.voiceId || "")}" placeholder="(default)" />
     <label>Persona / system prompt</label>
     <textarea class="f-persona" placeholder="You are a warm receptionist for…">${esc(ag?.persona || "")}</textarea>
+    <label class="ab-toggle"><input type="checkbox" class="f-ab" ${ag?.abEnabled ? "checked" : ""} /> <span>A/B test a second persona</span></label>
+    <div class="f-ab-wrap ${ag?.abEnabled ? "" : "hidden"}">
+      <label>Persona B — the variant to split-test (traffic is split ~50/50)</label>
+      <textarea class="f-persona-b" placeholder="An alternative persona to compare…">${esc(ag?.personaB || "")}</textarea>
+      <div class="ab-stats"></div>
+    </div>
     <div class="row mt"><button class="btn sm f-save">${isNew ? "Create agent" : "Save changes"}</button></div>`;
   if (isNew) list.prepend(c);
   else list.appendChild(c);
+
+  const abBox = $(".f-ab-wrap", c);
+  $(".f-ab", c).onchange = (e) => abBox.classList.toggle("hidden", !e.target.checked);
+  if (!isNew && ag?.abEnabled) void loadAbStats(ag.id, $(".ab-stats", c));
 
   $(".f-save", c).onclick = async () => {
     const payload = {
@@ -545,6 +555,8 @@ function renderAgentCard(list, ag, isNew) {
       voiceId: $(".f-voice", c).value.trim() || null,
       keyterms: $(".f-keyterms", c).value.split(",").map((s) => s.trim()).filter(Boolean),
       persona: $(".f-persona", c).value,
+      personaB: $(".f-persona-b", c).value.trim() || null,
+      abEnabled: $(".f-ab", c).checked,
       isActive: $(".f-active", c).value === "1",
     };
     if (isNew) {
@@ -558,6 +570,27 @@ function renderAgentCard(list, ag, isNew) {
       toast("Saved");
     }
   };
+}
+
+async function loadAbStats(agentId, el) {
+  if (!el) return;
+  el.innerHTML = `<p class="muted ab-hint">Loading A/B results…</p>`;
+  const { ok, data } = await api("GET", `/api/dashboard/agents/${agentId}/ab`);
+  const variants = (ok && data?.variants) || [];
+  if (!variants.length) {
+    el.innerHTML = `<p class="muted ab-hint">No A/B data yet — variants A and B will compare here once calls come in.</p>`;
+    return;
+  }
+  const row = (label, get) => `<tr><td class="muted">${label}</td>${variants.map((v) => `<td>${get(v)}</td>`).join("")}</tr>`;
+  el.innerHTML = `<div class="ab-compare"><table>
+    <thead><tr><th>Metric</th>${variants.map((v) => `<th>Variant ${esc(v.variant)}</th>`).join("")}</tr></thead>
+    <tbody>
+      ${row("Calls", (v) => v.calls)}
+      ${row("Avg duration", (v) => (v.avgDurationMs ? (v.avgDurationMs / 1000).toFixed(1) + "s" : "—"))}
+      ${row("Avg turns", (v) => v.avgTurns)}
+      ${row("Barge-in rate", (v) => v.bargeInRate)}
+      ${row("Reply latency p50", (v) => (v.latencyMsP50 != null ? v.latencyMsP50 + "ms" : "—"))}
+    </tbody></table></div>`;
 }
 
 // --------------------------------------------------------------------------

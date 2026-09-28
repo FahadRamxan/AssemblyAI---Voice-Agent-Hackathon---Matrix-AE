@@ -18,7 +18,7 @@ import type { Db } from "./db/db.js";
 import type { Agent, EmbedKey } from "./db/types.js";
 import { scopedRepo } from "./db/repo.js";
 import { requireOwner } from "./auth.js";
-import { computeAnalytics } from "./analytics.js";
+import { computeAnalytics, computeAbStats } from "./analytics.js";
 import { liveOps } from "./liveops.js";
 import { json, readJson, str, optStr, strArray } from "./http.js";
 
@@ -50,6 +50,8 @@ export async function handleDashboard(req: IncomingMessage, res: ServerResponse,
       const agent = repo.createAgent({
         name: name.slice(0, 100),
         persona: persona.slice(0, 8000),
+        personaB: optStr(body.personaB)?.slice(0, 8000) ?? null,
+        abEnabled: Boolean(body.abEnabled),
         greeting: str(body.greeting).slice(0, 500),
         language,
         voiceId: optStr(body.voiceId)?.slice(0, 100) ?? null,
@@ -66,6 +68,8 @@ export async function handleDashboard(req: IncomingMessage, res: ServerResponse,
       const updated = repo.updateAgent(agentId, {
         name: body.name !== undefined ? str(body.name).slice(0, 100) : undefined,
         persona: body.persona !== undefined ? str(body.persona).slice(0, 8000) : undefined,
+        personaB: body.personaB !== undefined ? (optStr(body.personaB)?.slice(0, 8000) ?? null) : undefined,
+        abEnabled: body.abEnabled !== undefined ? Boolean(body.abEnabled) : undefined,
         greeting: body.greeting !== undefined ? str(body.greeting).slice(0, 500) : undefined,
         language: body.language !== undefined ? str(body.language) : undefined,
         voiceId: body.voiceId !== undefined ? (optStr(body.voiceId)?.slice(0, 100) ?? null) : undefined,
@@ -74,6 +78,11 @@ export async function handleDashboard(req: IncomingMessage, res: ServerResponse,
       });
       if (!updated) return json(res, 404, { error: "agent_not_found" });
       return json(res, 200, { agent: publicAgent(updated) });
+    }
+    const abId = matchId(path, "/agents/", "/ab");
+    if (abId && method === "GET") {
+      if (!repo.getAgent(abId)) return json(res, 404, { error: "agent_not_found" });
+      return json(res, 200, { variants: computeAbStats(db, principal.tenantId, abId) });
     }
 
     // ---- embed keys ----
@@ -163,6 +172,8 @@ function publicAgent(a: Agent) {
     id: a.id,
     name: a.name,
     persona: a.persona,
+    personaB: a.persona_b,
+    abEnabled: a.ab_enabled === 1,
     greeting: a.greeting,
     language: a.language,
     voiceId: a.voice_id,

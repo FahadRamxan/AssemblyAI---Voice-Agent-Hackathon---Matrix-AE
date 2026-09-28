@@ -18,6 +18,8 @@ export interface ResolvedAgent {
   agentId: string;
   name: string;
   persona: string;
+  personaB: string | null;
+  abEnabled: boolean;
   greeting: string;
   language: string;
   voiceId: string | null;
@@ -31,6 +33,8 @@ interface Row {
   agent_id: string;
   name: string;
   persona: string;
+  persona_b: string | null;
+  ab_enabled: number;
   greeting: string;
   language: string;
   voice_id: string | null;
@@ -57,7 +61,7 @@ export function resolveEmbedKey(db: Db, publicKey: string): ResolvedAgent | null
   const row = db
     .prepare(
       `SELECT ek.id AS embed_key_id, ek.tenant_id, ek.agent_id, ek.allowed_origins,
-              a.name, a.persona, a.greeting, a.language, a.voice_id, a.keyterms
+              a.name, a.persona, a.persona_b, a.ab_enabled, a.greeting, a.language, a.voice_id, a.keyterms
        FROM embed_keys ek
        JOIN agents a ON a.id = ek.agent_id
        WHERE ek.public_key = @key AND ek.revoked_at IS NULL AND a.is_active = 1`,
@@ -70,12 +74,29 @@ export function resolveEmbedKey(db: Db, publicKey: string): ResolvedAgent | null
     agentId: row.agent_id,
     name: row.name,
     persona: row.persona,
+    personaB: row.persona_b,
+    abEnabled: row.ab_enabled === 1,
     greeting: row.greeting,
     language: row.language,
     voiceId: row.voice_id,
     keyterms: parseStringArray(row.keyterms),
     allowedOrigins: parseStringArray(row.allowed_origins),
   };
+}
+
+/**
+ * Pick the persona variant for a call. When A/B is enabled and a B persona
+ * exists, split ~50/50; otherwise always variant A (the base persona). Returns
+ * the chosen variant label + the persona text to run.
+ */
+export function chooseVariant(
+  agent: Pick<ResolvedAgent, "persona" | "personaB" | "abEnabled">,
+  rand: () => number = Math.random,
+): { variant: "A" | "B" | null; persona: string } {
+  if (agent.abEnabled && agent.personaB && agent.personaB.trim()) {
+    return rand() < 0.5 ? { variant: "A", persona: agent.persona } : { variant: "B", persona: agent.personaB };
+  }
+  return { variant: null, persona: agent.persona };
 }
 
 /** Best-effort stamp that a key was used (for the dashboard's last-used view). */
