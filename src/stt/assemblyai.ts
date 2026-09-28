@@ -116,6 +116,21 @@ export class AssemblyAiStt {
   }
 
   private onMessage(data: WebSocket.RawData): void {
+    if (process.env.DEBUG) {
+      try {
+        const m = JSON.parse(data.toString());
+        if (m.type === "Turn") {
+          log.debug("Turn", {
+            eot: m.end_of_turn,
+            fmt: m.turn_is_formatted,
+            order: m.turn_order,
+            text: String(m.transcript ?? "").slice(0, 40),
+          });
+        } else log.debug("msg", { type: m.type });
+      } catch {
+        /* ignore */
+      }
+    }
     const result = interpretSttMessage(data.toString(), this.opts.formatTurns ?? true);
     switch (result.kind) {
       case "ready":
