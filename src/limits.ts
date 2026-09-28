@@ -46,3 +46,29 @@ export class ConcurrencyTracker {
     return this.counts.get(tenantId) ?? 0;
   }
 }
+
+/**
+ * In-memory sliding-window rate limiter (per-instance) — blunts brute force +
+ * scrypt-amplified DoS on the auth endpoints. A distributed limiter is a
+ * documented scale-up; this is correct for a single instance.
+ */
+export class RateLimiter {
+  private readonly hits = new Map<string, number[]>();
+
+  constructor(
+    private readonly max: number,
+    private readonly windowMs: number,
+  ) {}
+
+  /** True if allowed (records the hit); false if the key is over the limit. */
+  check(key: string, nowMs: number = Date.now()): boolean {
+    const recent = (this.hits.get(key) ?? []).filter((t) => nowMs - t < this.windowMs);
+    if (recent.length >= this.max) {
+      this.hits.set(key, recent);
+      return false;
+    }
+    recent.push(nowMs);
+    this.hits.set(key, recent);
+    return true;
+  }
+}
