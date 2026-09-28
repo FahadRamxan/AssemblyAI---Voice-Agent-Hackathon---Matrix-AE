@@ -10,22 +10,52 @@
     <div class="aurora" aria-hidden="true"></div>
     <!-- auth view -->
     <div id="auth" class="hidden">
-      <div class="card">
-        <div class="brand"><span class="dot">◉</span> Raabta Live</div>
-        <p class="sub" id="authSub">Sign in to your workspace.</p>
-        <form id="authForm">
-          <div id="wsField" class="hidden">
-            <label for="workspace">Business / workspace name</label>
-            <input id="workspace" autocomplete="organization" placeholder="Acme Clinic" />
+      <div class="auth-wrap">
+        <!-- left: brand hero -->
+        <section class="auth-hero" aria-hidden="true">
+          <div class="brand"><span class="dot">◉</span> Raabta Live</div>
+          <div class="auth-orb-wrap">
+            <div class="auth-orb"></div>
           </div>
-          <label for="email">Email</label>
-          <input id="email" type="email" autocomplete="email" placeholder="you@business.com" />
-          <label for="password">Password</label>
-          <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" />
-          <button class="btn block" type="submit" id="authBtn">Sign in</button>
-          <div class="err" id="authErr"></div>
-        </form>
-        <div class="switch" id="authSwitch"></div>
+          <div class="auth-hero-body">
+            <h2 class="auth-hero-title">Real-time voice agents, live on your website in one line.</h2>
+            <ul class="auth-features">
+              <li>
+                <span class="ic">🎙</span>
+                <span><b>Live multilingual STT</b> — English, Spanish, French, German, Italian &amp; Portuguese, detected per turn.</span>
+              </li>
+              <li>
+                <span class="ic">⚡</span>
+                <span><b>True barge-in</b> — callers can talk over the agent and it stops instantly.</span>
+              </li>
+              <li>
+                <span class="ic">◇</span>
+                <span><b>Embed anywhere</b> — one publishable key, a single script tag.</span>
+              </li>
+            </ul>
+          </div>
+          <div class="auth-hero-foot">Powered by AssemblyAI Universal-Streaming</div>
+        </section>
+
+        <!-- right: form card -->
+        <div class="card">
+          <div class="brand card-brand"><span class="dot">◉</span> Raabta Live</div>
+          <p class="sub" id="authSub">Sign in to your workspace.</p>
+          <form id="authForm">
+            <div id="wsField" class="hidden">
+              <label for="workspace">Business / workspace name</label>
+              <input id="workspace" autocomplete="organization" placeholder="Acme Clinic" />
+            </div>
+            <label for="email">Email</label>
+            <input id="email" type="email" autocomplete="email" placeholder="you@business.com" />
+            <label for="password">Password</label>
+            <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" />
+            <button class="btn block" type="submit" id="authBtn">Sign in</button>
+            <div class="err" id="authErr"></div>
+          </form>
+          <div class="switch" id="authSwitch"></div>
+          <p class="auth-trust">🔒 Passwords are scrypt-hashed · sessions are revocable</p>
+        </div>
       </div>
     </div>
 
