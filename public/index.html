@@ -60,7 +60,10 @@
 
       <footer class="controls">
         <button id="startBtn" class="btn primary">Start call</button>
-        <button id="stopBtn" class="btn ghost" disabled>End</button>
+        <button id="stopBtn" class="btn danger" disabled aria-label="Hang up">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:6px;transform:rotate(135deg)">
+            <path d="M3 5a2 2 0 0 1 2-2h2l2 5-2 1a12 12 0 0 0 5 5l1-2 5 2v2a2 2 0 0 1-2 2A16 16 0 0 1 3 5z" />
+          </svg>Hang up</button>
         <div class="meter" title="microphone level"><span id="meterFill"></span></div>
         <form id="textForm" class="typebar">
           <input id="textInput" type="text" autocomplete="off" placeholder="or type to test the brain…" />

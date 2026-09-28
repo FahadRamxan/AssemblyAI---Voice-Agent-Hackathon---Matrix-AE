@@ -420,6 +420,15 @@ body[data-state="error"] {
 .btn.primary:hover:not(:disabled) {
   filter: brightness(1.06);
 }
+.btn.danger {
+  background: linear-gradient(135deg, #f87171, var(--danger));
+  border: none;
+  color: #1a0606;
+  box-shadow: 0 6px 20px rgba(248, 113, 113, 0.28);
+}
+.btn.danger:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
 .meter {
   width: 84px;
   height: 8px;
