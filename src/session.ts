@@ -6,11 +6,16 @@
  *                                        └─final──> LLM (stream) ──sentence──> TTS ──PCM──> browser
  *
  * Barge-in: while the agent is speaking, a fresh caller partial aborts the
- * in-flight LLM + TTS and tells the browser to flush playback — so you can
- * cut the agent off mid-sentence, like a real conversation.
+ * in-flight LLM + TTS and tells the browser to flush playback.
+ *
+ * Multi-tenant: the session runs a RESOLVED per-tenant agent (persona, greeting,
+ * voice, keyterms) — resolved from an embed key at the /ws upgrade — while the
+ * provider KEYS stay platform-level. The turn loop + barge-in are unchanged from
+ * the single-tenant version; only their inputs are injected.
  */
 import type { WebSocket } from "ws";
-import type { Config } from "./config.js";
+import type { LlmConfig, TtsConfig } from "./config.js";
+import type { ResolvedAgent } from "./embed.js";
 import { AssemblyAiStt } from "./stt/assemblyai.js";
 import { streamLlm } from "./llm.js";
 import { synthesize, TTS_SAMPLE_RATE } from "./tts.js";
@@ -18,38 +23,77 @@ import { Conversation, SentenceAssembler, detectLang } from "./agent.js";
 import { MIC_SAMPLE_RATE, type ServerMessage } from "./protocol.js";
 import { log } from "./logger.js";
 
+/** Provider keys/config — platform-level, shared by every tenant. */
+export interface PlatformProviders {
+  assemblyAiKey: string;
+  llm: LlmConfig | null;
+  tts: TtsConfig | null;
+}
+
+/** Best-effort call persistence, wired in from the DB (see recorder.ts). Every
+ *  method must be safe to throw-swallow and MUST NOT block the audio path. */
+export interface CallRecorder {
+  callerTurn(text: string, lang: string): void;
+  agentReply(text: string, lang: string, latencyMs: number): void;
+  bargeIn(): void;
+  finalize(reason: string, languagePrimary: string | null): void;
+}
+
+export interface SessionContext {
+  resolved: ResolvedAgent;
+  platform: PlatformProviders;
+  callId: string;
+  sessionMaxMs: number;
+  recorder?: CallRecorder;
+}
+
 export class VoiceSession {
   private stt: AssemblyAiStt;
-  private convo = new Conversation();
+  private convo: Conversation;
+  private ttsConfig: TtsConfig | null;
   private llmAbort: AbortController | null = null;
   private ttsAbort: AbortController | null = null;
   private ttsActive = false;
   private turnSeq = 0; // increments each turn so a stale turn can't resume after barge-in
   private closed = false;
+  private started = false; // start() runs exactly once per socket (no duplicate STT/greeting/spend)
+  private maxTimer: ReturnType<typeof setTimeout> | null = null;
+  private turnStartAt = 0;
+  private firstChunkAt = 0;
+  private readonly langTally = { en: 0, ar: 0 };
 
   constructor(
     private readonly browser: WebSocket,
-    private readonly cfg: Config,
+    private readonly ctx: SessionContext,
   ) {
+    const { resolved, platform } = ctx;
     this.stt = new AssemblyAiStt({
-      apiKey: cfg.assemblyAiKey,
+      apiKey: platform.assemblyAiKey,
       sampleRate: MIC_SAMPLE_RATE,
       formatTurns: true,
-      keyterms: ["Raabta", "Matrix AE"],
+      keyterms: resolved.keyterms,
     });
+    this.convo = new Conversation(resolved.persona);
+    // Per-agent voice over the platform TTS key (keys stay platform-level).
+    this.ttsConfig = platform.tts
+      ? { ...platform.tts, voiceId: resolved.voiceId || platform.tts.voiceId }
+      : null;
   }
 
   start(): void {
+    if (this.started || this.closed) return; // idempotent — a repeated {type:'start'} is a no-op
+    this.started = true;
+
     this.send({
       type: "ready",
       micSampleRate: MIC_SAMPLE_RATE,
       ttsSampleRate: TTS_SAMPLE_RATE,
-      sttLive: Boolean(this.cfg.assemblyAiKey),
+      sttLive: Boolean(this.ctx.platform.assemblyAiKey),
     });
 
-    if (this.cfg.assemblyAiKey) {
+    if (this.ctx.platform.assemblyAiKey) {
       this.stt.connect({
-        onReady: () => log.info("stt session ready"),
+        onReady: () => log.info("stt session ready", { callId: this.ctx.callId }),
         onPartial: (text) => this.onPartial(text),
         onFinal: (text) => this.onFinal(text),
         onError: (err) => {
@@ -62,10 +106,18 @@ export class VoiceSession {
       this.send({ type: "error", message: "ASSEMBLYAI_API_KEY not set — type to test the brain instead." });
     }
 
+    // Hard wall-clock cap: bound a single session's provider spend.
+    this.maxTimer = setTimeout(() => {
+      this.send({ type: "status", text: "session time limit reached" });
+      this.close("timeout");
+    }, this.ctx.sessionMaxMs);
+    this.maxTimer.unref?.();
+
     // Agent speaks first.
-    if (this.cfg.greeting) {
-      this.convo.addAssistant(this.cfg.greeting);
-      void this.speak(this.cfg.greeting, ++this.turnSeq);
+    const greeting = this.ctx.resolved.greeting;
+    if (greeting) {
+      this.convo.addAssistant(greeting);
+      void this.speak(greeting, ++this.turnSeq);
     }
   }
 
@@ -88,13 +140,21 @@ export class VoiceSession {
 
   private onFinal(text: string): void {
     this.send({ type: "final", text });
+    const lang = detectLang(text);
+    if (lang === "ar") this.langTally.ar++;
+    else this.langTally.en++;
+    try {
+      this.ctx.recorder?.callerTurn(text, lang);
+    } catch (err) {
+      log.warn("recorder callerTurn failed", { err: String(err) });
+    }
     void this.handleTurn(text);
   }
 
   /** Run one caller turn: LLM (stream) -> sentences -> TTS -> audio. */
   private async handleTurn(userText: string): Promise<void> {
     if (this.closed) return;
-    if (!this.cfg.llm) {
+    if (!this.ctx.platform.llm) {
       this.send({ type: "error", message: "No LLM configured (set OPENAI_API_KEY or GEMINI_API_KEY)." });
       return;
     }
@@ -106,10 +166,12 @@ export class VoiceSession {
     this.llmAbort = new AbortController();
     const assembler = new SentenceAssembler();
     let full = "";
+    this.turnStartAt = Date.now();
+    this.firstChunkAt = 0;
     this.send({ type: "status", text: "thinking" });
 
     try {
-      for await (const delta of streamLlm(this.cfg.llm, this.convo.messages(), this.llmAbort.signal)) {
+      for await (const delta of streamLlm(this.ctx.platform.llm, this.convo.messages(), this.llmAbort.signal)) {
         if (seq !== this.turnSeq) return; // superseded by barge-in / newer turn
         full += delta;
         for (const sentence of assembler.push(delta)) {
@@ -127,6 +189,14 @@ export class VoiceSession {
     } finally {
       if (seq === this.turnSeq) {
         this.convo.addAssistant(full);
+        if (full.trim()) {
+          const latency = (this.firstChunkAt || Date.now()) - this.turnStartAt;
+          try {
+            this.ctx.recorder?.agentReply(full, detectLang(full), latency);
+          } catch (err) {
+            log.warn("recorder agentReply failed", { err: String(err) });
+          }
+        }
         if (this.ttsActive) {
           this.ttsActive = false;
           this.send({ type: "tts_stop", reason: "done" });
@@ -140,7 +210,7 @@ export class VoiceSession {
     const text = sentence.trim();
     if (!text || this.closed) return;
     this.send({ type: "agent", text });
-    if (!this.cfg.tts) return; // text-only mode (no voice configured)
+    if (!this.ttsConfig) return; // text-only mode (no voice configured)
 
     this.ttsAbort = new AbortController();
     if (!this.ttsActive) {
@@ -148,8 +218,9 @@ export class VoiceSession {
       this.send({ type: "tts_start" });
     }
     try {
-      for await (const chunk of synthesize(this.cfg.tts, text, detectLang(text), this.ttsAbort.signal)) {
+      for await (const chunk of synthesize(this.ttsConfig, text, detectLang(text), this.ttsAbort.signal)) {
         if (seq !== this.turnSeq || this.closed) return; // barge-in cut us off
+        if (!this.firstChunkAt) this.firstChunkAt = Date.now(); // first audio of the turn (latency signal)
         this.sendBinary(chunk);
       }
     } catch (err) {
@@ -158,9 +229,14 @@ export class VoiceSession {
   }
 
   private bargeIn(): void {
-    log.info("barge-in");
+    log.info("barge-in", { callId: this.ctx.callId });
     this.abortInflight();
     this.turnSeq++; // invalidate the interrupted turn
+    try {
+      this.ctx.recorder?.bargeIn();
+    } catch (err) {
+      log.warn("recorder bargeIn failed", { err: String(err) });
+    }
     if (this.ttsActive) {
       this.ttsActive = false;
       this.send({ type: "tts_stop", reason: "barge_in" });
@@ -174,11 +250,21 @@ export class VoiceSession {
     this.ttsAbort = null;
   }
 
-  close(): void {
+  close(reason = "client_close"): void {
     if (this.closed) return;
     this.closed = true;
+    if (this.maxTimer) {
+      clearTimeout(this.maxTimer);
+      this.maxTimer = null;
+    }
     this.abortInflight();
     this.stt.close();
+    const primary = this.langTally.ar > this.langTally.en ? "ar" : this.langTally.en > 0 ? "en" : null;
+    try {
+      this.ctx.recorder?.finalize(reason, primary);
+    } catch (err) {
+      log.warn("recorder finalize failed", { err: String(err) });
+    }
   }
 
   private send(msg: ServerMessage): void {

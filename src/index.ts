@@ -4,6 +4,7 @@
  */
 import { loadConfig, describeConfig } from "./config.js";
 import { createServer } from "./server.js";
+import { closeDb } from "./db/db.js";
 import { log } from "./logger.js";
 
 const cfg = loadConfig();
@@ -20,7 +21,13 @@ server.listen(cfg.port, () => {
 for (const sig of ["SIGINT", "SIGTERM"] as const) {
   process.on(sig, () => {
     log.info("shutting down");
-    server.close(() => process.exit(0));
-    setTimeout(() => process.exit(0), 2000).unref();
+    server.close(() => {
+      closeDb(); // checkpoint the WAL + close cleanly
+      process.exit(0);
+    });
+    setTimeout(() => {
+      closeDb();
+      process.exit(0);
+    }, 2000).unref();
   });
 }

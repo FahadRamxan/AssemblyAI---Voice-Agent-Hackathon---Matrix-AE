@@ -7,7 +7,28 @@
  *
  * TTS playback + barge-in flush are layered on in app-playback code.
  */
-const WS_URL = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
+// The widget authenticates with a publishable embed key. The built-in demo page
+// fetches the demo agent's key from /api/config; a real embed passes its own via
+// ?key= or a data-attribute. No key -> the server refuses the /ws upgrade.
+const WS_BASE = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
+let embedKey =
+  new URLSearchParams(location.search).get("key") ||
+  document.currentScript?.dataset.agentKey ||
+  "";
+
+async function ensureConfig() {
+  if (embedKey) return;
+  try {
+    const cfg = await (await fetch("/api/config")).json();
+    embedKey = cfg.embedKey || "";
+  } catch {
+    /* server will refuse the upgrade if the key is missing */
+  }
+}
+
+function wsUrl() {
+  return embedKey ? `${WS_BASE}?key=${encodeURIComponent(embedKey)}` : WS_BASE;
+}
 
 const els = {
   transcript: document.getElementById("transcript"),
@@ -189,6 +210,7 @@ function flushPlayback() {
 // --------------------------------------------------------------------------
 async function startCall() {
   els.startBtn.disabled = true;
+  await ensureConfig(); // resolve the embed key before opening the socket
   try {
     micStream = await navigator.mediaDevices.getUserMedia({
       audio: {
@@ -234,7 +256,7 @@ function onMicFrame(buf) {
 // socket lifecycle
 // --------------------------------------------------------------------------
 function openSocket() {
-  ws = new WebSocket(WS_URL);
+  ws = new WebSocket(wsUrl());
   ws.binaryType = "arraybuffer";
   ws.onopen = () => ws.send(JSON.stringify({ type: "start" }));
   ws.onmessage = (ev) => {
@@ -271,10 +293,11 @@ function endCall() {
 // --------------------------------------------------------------------------
 els.startBtn.addEventListener("click", startCall);
 els.stopBtn.addEventListener("click", endCall);
-els.textForm.addEventListener("submit", (e) => {
+els.textForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = els.textInput.value.trim();
   if (!text) return;
+  await ensureConfig();
   if (!ws || ws.readyState !== WebSocket.OPEN) openSocket();
   const send = () => ws.send(JSON.stringify({ type: "text", text }));
   if (ws.readyState === WebSocket.OPEN) send();
