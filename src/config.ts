@@ -46,6 +46,8 @@ export interface Config {
   port: number;
   greeting: string;
   assemblyAiKey: string;
+  /** Platform default STT model — set to "universal-streaming-multilingual" to enable live EN/ES/FR/DE/IT/PT. */
+  assemblyAiSpeechModel: string;
   llm: LlmConfig | null;
   tts: TtsConfig | null;
 }
@@ -95,6 +97,7 @@ export function loadConfig(): Config {
     port: Number(env("PORT")) || 8790,
     greeting: env("AGENT_GREETING"),
     assemblyAiKey: env("ASSEMBLYAI_API_KEY"),
+    assemblyAiSpeechModel: env("ASSEMBLYAI_SPEECH_MODEL"),
     llm: resolveLlm(),
     tts: resolveTts(),
   };
@@ -109,5 +112,6 @@ export function describeConfig(cfg: Config): Record<string, string> {
     llm: cfg.llm ? `${cfg.llm.provider}:${cfg.llm.model}` : "MISSING",
     tts: cfg.tts ? `${cfg.tts.provider}:${cfg.tts.voiceId || "default"}` : "MISSING",
     greeting: cfg.greeting ? "on" : "off",
+    speechModel: cfg.assemblyAiSpeechModel || "english (default)",
   };
 }

@@ -23,7 +23,7 @@ export interface TranscriptWord {
 export type ServerMessage =
   | { type: "ready"; micSampleRate: number; ttsSampleRate: number; sttLive: boolean }
   | { type: "partial"; text: string; words?: TranscriptWord[] } // interim transcript (overwrite the live caption)
-  | { type: "final"; text: string; words?: TranscriptWord[]; confidence?: number } // finalized caller turn
+  | { type: "final"; text: string; words?: TranscriptWord[]; confidence?: number; language?: string } // finalized caller turn (language = detected code when multilingual)
   | { type: "agent"; text: string } // a sentence the agent is about to speak
   | { type: "tts_start" }
   | { type: "tts_stop"; reason?: "barge_in" | "done" }

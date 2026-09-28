@@ -27,6 +27,10 @@ export interface SttMeta {
   words: SttWord[];
   /** AssemblyAI's end_of_turn_confidence (0..1), if present. */
   endOfTurnConfidence?: number;
+  /** Detected language code (e.g. "es"), when language_detection is on. */
+  languageCode?: string;
+  /** Confidence of the language detection (0..1). */
+  languageConfidence?: number;
 }
 
 export interface SttEvents {
@@ -48,6 +52,10 @@ export interface SttOptions {
   endOfTurnConfidenceThreshold?: number;
   /** Up to 100 terms to boost recognition of (brand/product names, e.g. "Raabta"). */
   keyterms?: string[];
+  /** Override the speech model, e.g. "universal-streaming-multilingual" (EN/ES/FR/DE/IT/PT). */
+  speechModel?: string;
+  /** Enable per-turn language detection — only valid with the multilingual model. */
+  languageDetection?: boolean;
 }
 
 const ENDPOINT = "wss://streaming.assemblyai.com/v3/ws";
@@ -55,7 +63,14 @@ const ENDPOINT = "wss://streaming.assemblyai.com/v3/ws";
 export type SttInterpretation =
   | { kind: "ready"; id: string }
   | { kind: "partial"; text: string; words: SttWord[] }
-  | { kind: "final"; text: string; words: SttWord[]; endOfTurnConfidence?: number }
+  | {
+      kind: "final";
+      text: string;
+      words: SttWord[];
+      endOfTurnConfidence?: number;
+      languageCode?: string;
+      languageConfidence?: number;
+    }
   | { kind: "termination" }
   | { kind: "ignore" };
 
@@ -95,8 +110,11 @@ export function interpretSttMessage(raw: string, requireFormatted: boolean): Stt
       const endOfTurn = msg.end_of_turn === true;
       const formatted = msg.turn_is_formatted === true;
       const eotConf = typeof msg.end_of_turn_confidence === "number" ? msg.end_of_turn_confidence : undefined;
+      const languageCode = typeof msg.language_code === "string" ? msg.language_code : undefined;
+      const languageConfidence =
+        typeof msg.language_confidence === "number" ? msg.language_confidence : undefined;
       if (endOfTurn && (!requireFormatted || formatted))
-        return { kind: "final", text, words, endOfTurnConfidence: eotConf };
+        return { kind: "final", text, words, endOfTurnConfidence: eotConf, languageCode, languageConfidence };
       if (!endOfTurn) return { kind: "partial", text, words };
       return { kind: "ignore" }; // unformatted end_of_turn — wait for the formatted one
     }
@@ -129,6 +147,8 @@ export class AssemblyAiStt {
     if (this.opts.keyterms?.length) {
       params.set("keyterms_prompt", JSON.stringify(this.opts.keyterms.slice(0, 100)));
     }
+    if (this.opts.speechModel) params.set("speech_model", this.opts.speechModel);
+    if (this.opts.languageDetection) params.set("language_detection", "true");
     const url = `${ENDPOINT}?${params.toString()}`;
 
     this.ws = new WebSocket(url, {
@@ -172,6 +192,8 @@ export class AssemblyAiStt {
         this.events.onFinal?.(result.text, {
           words: result.words,
           endOfTurnConfidence: result.endOfTurnConfidence,
+          languageCode: result.languageCode,
+          languageConfidence: result.languageConfidence,
         });
         break;
       case "partial":

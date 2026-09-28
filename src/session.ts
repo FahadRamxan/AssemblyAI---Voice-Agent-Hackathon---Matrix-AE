@@ -27,8 +27,18 @@ import { log } from "./logger.js";
 /** Provider keys/config — platform-level, shared by every tenant. */
 export interface PlatformProviders {
   assemblyAiKey: string;
+  /** Platform default STT model (e.g. "universal-streaming-multilingual"). */
+  assemblyAiSpeechModel?: string;
   llm: LlmConfig | null;
   tts: TtsConfig | null;
+}
+
+const MULTILINGUAL_MODEL = "universal-streaming-multilingual";
+
+/** An agent set to language "multi" forces the multilingual model; else the platform default. */
+export function resolveSpeechModel(agentLanguage: string, platformModel?: string): string | undefined {
+  if (agentLanguage === "multi") return MULTILINGUAL_MODEL;
+  return platformModel && platformModel.length ? platformModel : undefined;
 }
 
 /** Best-effort call persistence, wired in from the DB (see recorder.ts). Every
@@ -68,11 +78,14 @@ export class VoiceSession {
     private readonly ctx: SessionContext,
   ) {
     const { resolved, platform } = ctx;
+    const speechModel = resolveSpeechModel(resolved.language, platform.assemblyAiSpeechModel);
     this.stt = new AssemblyAiStt({
       apiKey: platform.assemblyAiKey,
       sampleRate: MIC_SAMPLE_RATE,
       formatTurns: true,
       keyterms: resolved.keyterms,
+      speechModel,
+      languageDetection: speechModel === MULTILINGUAL_MODEL, // per-turn language codes on finals
     });
     this.convo = new Conversation(resolved.persona);
     // Per-agent voice over the platform TTS key (keys stay platform-level).
@@ -143,7 +156,7 @@ export class VoiceSession {
   private onFinal(text: string, meta?: SttMeta): void {
     const words = meta?.words ?? [];
     const confidence = utteranceConfidence(words, meta?.endOfTurnConfidence);
-    this.send({ type: "final", text, words, confidence });
+    this.send({ type: "final", text, words, confidence, language: meta?.languageCode });
     const lang = detectLang(text);
     if (lang === "ar") this.langTally.ar++;
     else this.langTally.en++;
