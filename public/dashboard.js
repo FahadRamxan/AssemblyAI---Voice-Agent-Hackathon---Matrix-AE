@@ -111,13 +111,116 @@ function showApp() {
   for (const b of document.querySelectorAll("#nav button")) {
     b.onclick = () => goTab(b.dataset.tab);
   }
-  $("#logoutBtn").onclick = async () => {
-    await api("POST", "/api/auth/logout");
-    me = null;
-    showAuth();
-  };
+  $("#logoutBtn").onclick = doLogout;
+  $("#themeBtn").onclick = toggleTheme;
+  $("#paletteBtn").onclick = openPalette;
+  syncThemeIcon();
   renderTab();
 }
+
+async function doLogout() {
+  await api("POST", "/api/auth/logout");
+  me = null;
+  showAuth();
+}
+
+// --------------------------------------------------------------------------
+// theme
+// --------------------------------------------------------------------------
+function currentTheme() {
+  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+}
+function syncThemeIcon() {
+  const b = $("#themeBtn");
+  if (b) b.textContent = currentTheme() === "light" ? "🌙" : "☀️";
+}
+function toggleTheme() {
+  const next = currentTheme() === "light" ? "dark" : "light";
+  document.documentElement.dataset.theme = next;
+  try {
+    localStorage.setItem("raabta_theme", next);
+  } catch {
+    /* ignore */
+  }
+  syncThemeIcon();
+}
+
+// --------------------------------------------------------------------------
+// command palette (⌘K / Ctrl+K)
+// --------------------------------------------------------------------------
+function paletteCommands() {
+  return [
+    { label: "Go to Overview", hint: "Dashboard", run: () => goTab("home") },
+    { label: "Go to Agents", hint: "Configure", run: () => goTab("agents") },
+    { label: "Go to Embed & keys", hint: "Snippet", run: () => goTab("keys") },
+    { label: "Go to Calls", hint: "Transcripts", run: () => goTab("calls") },
+    { label: "Talk to your agent", hint: "Live test", run: () => goTab("talk") },
+    { label: "New agent", hint: "Create", run: () => { goTab("agents"); setTimeout(() => $("#newAgent")?.click(), 80); } },
+    { label: `Switch to ${currentTheme() === "light" ? "dark" : "light"} theme`, hint: "Appearance", run: toggleTheme },
+    { label: "Log out", hint: "Session", run: doLogout },
+  ];
+}
+let paletteIdx = 0;
+let paletteFiltered = [];
+function openPalette() {
+  const p = $("#palette");
+  if (!p) return;
+  p.classList.remove("hidden");
+  const input = $("#paletteInput");
+  input.value = "";
+  renderPalette("");
+  input.focus();
+}
+function closePalette() {
+  $("#palette")?.classList.add("hidden");
+}
+function renderPalette(q) {
+  const query = q.trim().toLowerCase();
+  paletteFiltered = paletteCommands().filter((c) => !query || c.label.toLowerCase().includes(query) || c.hint.toLowerCase().includes(query));
+  paletteIdx = 0;
+  const list = $("#paletteList");
+  list.innerHTML =
+    paletteFiltered
+      .map(
+        (c, i) => `<div class="palette-item ${i === 0 ? "sel" : ""}" data-i="${i}">
+          <span>${esc(c.label)}</span><span class="palette-hint">${esc(c.hint)}</span></div>`,
+      )
+      .join("") || `<div class="palette-empty">No matching action</div>`;
+  for (const el of list.querySelectorAll(".palette-item")) {
+    el.onmouseenter = () => setPaletteSel(Number(el.dataset.i));
+    el.onclick = () => runPalette(Number(el.dataset.i));
+  }
+}
+function setPaletteSel(i) {
+  paletteIdx = i;
+  for (const el of $("#paletteList").querySelectorAll(".palette-item"))
+    el.classList.toggle("sel", Number(el.dataset.i) === i);
+}
+function runPalette(i) {
+  const cmd = paletteFiltered[i];
+  closePalette();
+  if (cmd) cmd.run();
+}
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    if (!me) return; // only in the app
+    const open = !$("#palette")?.classList.contains("hidden");
+    open ? closePalette() : openPalette();
+    return;
+  }
+  if ($("#palette")?.classList.contains("hidden")) return;
+  if (e.key === "Escape") closePalette();
+  else if (e.key === "ArrowDown") { e.preventDefault(); setPaletteSel(Math.min(paletteFiltered.length - 1, paletteIdx + 1)); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); setPaletteSel(Math.max(0, paletteIdx - 1)); }
+  else if (e.key === "Enter") { e.preventDefault(); runPalette(paletteIdx); }
+});
+document.addEventListener("input", (e) => {
+  if (e.target && e.target.id === "paletteInput") renderPalette(e.target.value);
+});
+document.addEventListener("click", (e) => {
+  if (e.target && e.target.id === "palette") closePalette(); // click backdrop
+});
 
 function goTab(tab) {
   activeTab = tab;

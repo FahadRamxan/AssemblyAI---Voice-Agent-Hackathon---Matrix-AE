@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Raabta Live — Dashboard</title>
     <link rel="stylesheet" href="/dashboard.css" />
+    <script>
+      // Apply the saved theme before paint (no flash).
+      try {
+        var t = localStorage.getItem("raabta_theme");
+        if (t) document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div class="aurora" aria-hidden="true"></div>
@@ -86,10 +93,30 @@
           </button>
         </nav>
         <div class="spacer"></div>
+        <button class="cmdk-open" id="paletteBtn" title="Command palette">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+          <span>Quick actions</span>
+          <kbd>⌘K</kbd>
+        </button>
         <div class="who" id="who"></div>
-        <button class="btn ghost sm block" id="logoutBtn">Log out</button>
+        <div class="side-actions">
+          <button class="icon-btn" id="themeBtn" title="Toggle light / dark" aria-label="Toggle theme"></button>
+          <button class="btn ghost sm block" id="logoutBtn">Log out</button>
+        </div>
       </aside>
       <main id="view"></main>
+    </div>
+
+    <!-- command palette (⌘K / Ctrl+K) -->
+    <div id="palette" class="palette hidden" role="dialog" aria-modal="true" aria-label="Command palette">
+      <div class="palette-box">
+        <div class="palette-search">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+          <input id="paletteInput" placeholder="Search actions… (agents, keys, talk, theme…)" autocomplete="off" />
+          <kbd>esc</kbd>
+        </div>
+        <div id="paletteList" class="palette-list"></div>
+      </div>
     </div>
 
     <div id="toast"></div>
