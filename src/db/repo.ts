@@ -13,7 +13,7 @@
  */
 import type { Db } from "./db.js";
 import type { Agent, Call, EmbedKey, Tenant, TranscriptTurn, User } from "./types.js";
-import { newId, newPublicKey, now } from "./ids.js";
+import { newId, newPublicKey, newSessionToken, now } from "./ids.js";
 
 // ---- provisioning (tenant-crossing by nature; used by signup + seed) --------
 
@@ -56,6 +56,8 @@ export function createUser(
 export interface CreateAgentInput {
   name: string;
   persona: string;
+  personaB?: string | null;
+  abEnabled?: boolean;
   greeting?: string;
   language?: string;
   voiceId?: string | null;
@@ -65,6 +67,8 @@ export interface CreateAgentInput {
 export interface UpdateAgentPatch {
   name?: string;
   persona?: string;
+  personaB?: string | null;
+  abEnabled?: boolean;
   greeting?: string;
   language?: string;
   voiceId?: string | null;
@@ -77,6 +81,7 @@ export interface CreateCallInput {
   embedKeyId?: string | null;
   origin?: string | null;
   clientIpHash?: string | null;
+  variant?: string | null;
 }
 
 export interface AddTurnInput {
@@ -103,6 +108,8 @@ export function scopedRepo(db: Db, tenantId: string) {
         tenant_id: tenantId,
         name: input.name,
         persona: input.persona,
+        persona_b: input.personaB ?? null,
+        ab_enabled: input.abEnabled ? 1 : 0,
         greeting: input.greeting ?? "",
         language: input.language ?? "auto",
         voice_id: input.voiceId ?? null,
@@ -112,8 +119,8 @@ export function scopedRepo(db: Db, tenantId: string) {
         updated_at: ts,
       };
       db.prepare(
-        `INSERT INTO agents (id, tenant_id, name, persona, greeting, language, voice_id, keyterms, is_active, created_at, updated_at)
-         VALUES (@id, @tenant_id, @name, @persona, @greeting, @language, @voice_id, @keyterms, @is_active, @created_at, @updated_at)`,
+        `INSERT INTO agents (id, tenant_id, name, persona, persona_b, ab_enabled, greeting, language, voice_id, keyterms, is_active, created_at, updated_at)
+         VALUES (@id, @tenant_id, @name, @persona, @persona_b, @ab_enabled, @greeting, @language, @voice_id, @keyterms, @is_active, @created_at, @updated_at)`,
       ).run(row);
       return row;
     },
@@ -143,6 +150,8 @@ export function scopedRepo(db: Db, tenantId: string) {
       };
       if (patch.name !== undefined) put("name", patch.name);
       if (patch.persona !== undefined) put("persona", patch.persona);
+      if (patch.personaB !== undefined) put("persona_b", patch.personaB);
+      if (patch.abEnabled !== undefined) put("ab_enabled", patch.abEnabled ? 1 : 0);
       if (patch.greeting !== undefined) put("greeting", patch.greeting);
       if (patch.language !== undefined) put("language", patch.language);
       if (patch.voiceId !== undefined) put("voice_id", patch.voiceId);
@@ -201,14 +210,17 @@ export function scopedRepo(db: Db, tenantId: string) {
         turn_count: 0,
         barge_in_count: 0,
         language_primary: null,
+        detected_lang: null,
+        variant: input.variant ?? null,
+        share_token: null,
         status: "active",
         ended_reason: null,
         origin: input.origin ?? null,
         client_ip_hash: input.clientIpHash ?? null,
       };
       db.prepare(
-        `INSERT INTO calls (id, tenant_id, agent_id, embed_key_id, started_at, ended_at, duration_ms, turn_count, barge_in_count, language_primary, status, ended_reason, origin, client_ip_hash)
-         VALUES (@id, @tenant_id, @agent_id, @embed_key_id, @started_at, @ended_at, @duration_ms, @turn_count, @barge_in_count, @language_primary, @status, @ended_reason, @origin, @client_ip_hash)`,
+        `INSERT INTO calls (id, tenant_id, agent_id, embed_key_id, started_at, ended_at, duration_ms, turn_count, barge_in_count, language_primary, detected_lang, variant, share_token, status, ended_reason, origin, client_ip_hash)
+         VALUES (@id, @tenant_id, @agent_id, @embed_key_id, @started_at, @ended_at, @duration_ms, @turn_count, @barge_in_count, @language_primary, @detected_lang, @variant, @share_token, @status, @ended_reason, @origin, @client_ip_hash)`,
       ).run(row);
       return row;
     },
@@ -239,7 +251,10 @@ export function scopedRepo(db: Db, tenantId: string) {
       ).run({ callId, tenantId });
     },
 
-    finalizeCall(callId: string, input: { endedReason?: string; languagePrimary?: string | null }): void {
+    finalizeCall(
+      callId: string,
+      input: { endedReason?: string; languagePrimary?: string | null; detectedLang?: string | null },
+    ): void {
       const ended = now();
       db.prepare(
         `UPDATE calls
@@ -247,7 +262,8 @@ export function scopedRepo(db: Db, tenantId: string) {
              duration_ms = @ended - started_at,
              status = 'completed',
              ended_reason = @endedReason,
-             language_primary = COALESCE(@languagePrimary, language_primary)
+             language_primary = COALESCE(@languagePrimary, language_primary),
+             detected_lang = COALESCE(@detectedLang, detected_lang)
          WHERE id = @callId AND tenant_id = @tenantId AND ended_at IS NULL`,
       ).run({
         callId,
@@ -255,7 +271,29 @@ export function scopedRepo(db: Db, tenantId: string) {
         ended,
         endedReason: input.endedReason ?? "client_close",
         languagePrimary: input.languagePrimary ?? null,
+        detectedLang: input.detectedLang ?? null,
       });
+    },
+
+    /** Generate + persist a public share token for a call (idempotent — returns the existing one). */
+    shareCall(callId: string): string | null {
+      const call = this.getCall(callId);
+      if (!call) return null;
+      if (call.share_token) return call.share_token;
+      const token = `rpt_${newSessionToken()}`; // long, URL-safe, unguessable
+      db.prepare("UPDATE calls SET share_token = @token WHERE id = @callId AND tenant_id = @tenantId").run({
+        token,
+        callId,
+        tenantId,
+      });
+      return token;
+    },
+
+    unshareCall(callId: string): boolean {
+      const res = db
+        .prepare("UPDATE calls SET share_token = NULL WHERE id = @callId AND tenant_id = @tenantId")
+        .run({ callId, tenantId });
+      return res.changes > 0;
     },
 
     // ---- transcript turns ----

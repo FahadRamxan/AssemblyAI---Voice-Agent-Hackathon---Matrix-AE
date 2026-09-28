@@ -9,7 +9,7 @@
  * staying correct. All statements are idempotent (CREATE ... IF NOT EXISTS);
  * `schema_meta.schema_version` gates future additive migrations.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 4;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -59,6 +59,8 @@ CREATE TABLE IF NOT EXISTS agents (
   tenant_id  TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   name       TEXT NOT NULL,
   persona    TEXT NOT NULL,
+  persona_b  TEXT,
+  ab_enabled INTEGER NOT NULL DEFAULT 0,
   greeting   TEXT NOT NULL DEFAULT '',
   language   TEXT NOT NULL DEFAULT 'auto',
   voice_id   TEXT,
@@ -97,12 +99,16 @@ CREATE TABLE IF NOT EXISTS calls (
   turn_count     INTEGER NOT NULL DEFAULT 0,
   barge_in_count INTEGER NOT NULL DEFAULT 0,
   language_primary TEXT,
+  detected_lang  TEXT,
+  variant        TEXT,
+  share_token    TEXT,
   status         TEXT NOT NULL DEFAULT 'active',
   ended_reason   TEXT,
   origin         TEXT,
   client_ip_hash TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_calls_tenant_started ON calls(tenant_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_calls_share ON calls(share_token);
 
 -- The persisted read-along transcript, one row per finalized turn.
 -- tenant_id denormalized so a transcript read is scoped without a join.

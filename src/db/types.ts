@@ -26,6 +26,8 @@ export interface Agent {
   tenant_id: string;
   name: string;
   persona: string;
+  persona_b: string | null; // optional A/B variant persona
+  ab_enabled: number; // 0 | 1 — split traffic between persona and persona_b
   greeting: string;
   language: string;
   voice_id: string | null;
@@ -58,6 +60,9 @@ export interface Call {
   turn_count: number;
   barge_in_count: number;
   language_primary: string | null;
+  detected_lang: string | null; // AssemblyAI-detected language code (multilingual agents)
+  variant: string | null; // 'A' | 'B' — persona A/B variant used for this call
+  share_token: string | null; // set when the owner shares a public read-only report
   status: string; // 'active' | 'completed' | 'error'
   ended_reason: string | null;
   origin: string | null;

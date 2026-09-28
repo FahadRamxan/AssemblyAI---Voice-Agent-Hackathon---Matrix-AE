@@ -32,9 +32,32 @@ export function openDb(dbPath: string = resolveDbPath()): Db {
   return db;
 }
 
+/** Add a column only if it's missing — idempotent, so re-runs on any DB are safe. */
+function addColumn(db: Db, table: string, column: string, ddl: string): void {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  }
+}
+
+/**
+ * Additive migrations for DBs created before a column existed. Each is guarded by
+ * addColumn(), so this is safe to run on every boot regardless of schema version.
+ * Fresh DBs already have these from SCHEMA_SQL; this only backfills older files.
+ */
+function runAdditiveMigrations(db: Db): void {
+  addColumn(db, "calls", "detected_lang", "detected_lang TEXT"); // v2 — AssemblyAI-detected language
+  addColumn(db, "calls", "share_token", "share_token TEXT"); // v3 — public shareable report token
+  addColumn(db, "calls", "variant", "variant TEXT"); // v4 — persona A/B variant
+  addColumn(db, "agents", "persona_b", "persona_b TEXT"); // v4 — A/B variant persona
+  addColumn(db, "agents", "ab_enabled", "ab_enabled INTEGER NOT NULL DEFAULT 0"); // v4 — A/B on/off
+  db.exec("CREATE INDEX IF NOT EXISTS idx_calls_share ON calls(share_token)");
+}
+
 /** Apply the schema (idempotent) and record the version. */
 function migrate(db: Db): void {
   db.exec(SCHEMA_SQL);
+  runAdditiveMigrations(db);
   const row = db.prepare("SELECT value FROM schema_meta WHERE key = 'schema_version'").get() as
     | { value: string }
     | undefined;
