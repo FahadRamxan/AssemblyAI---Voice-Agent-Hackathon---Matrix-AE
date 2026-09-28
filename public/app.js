@@ -53,18 +53,42 @@ let preroll = []; // frames captured before ready — flushed so the first word 
 let currentAgentBubble = null;
 
 const isArabic = (t) => (t.match(/[؀-ۿ]/g) || []).length > (t.match(/[A-Za-z]/g) || []).length;
+const LOWCONF = 0.55; // words below this are shaded (mirrors the server's confidence threshold)
+
+// Render text as confidence-shaded word spans (from AssemblyAI's word-level confidence).
+function fillWords(el, text, words) {
+  el.textContent = "";
+  if (words && words.length) {
+    for (const w of words) {
+      const s = document.createElement("span");
+      s.textContent = w.text + " ";
+      if (w.confidence < LOWCONF) s.className = "lowconf";
+      s.title = `${Math.round(w.confidence * 100)}% confident`;
+      el.appendChild(s);
+    }
+  } else {
+    el.textContent = text;
+  }
+}
 
 // --------------------------------------------------------------------------
 // transcript rendering
 // --------------------------------------------------------------------------
-function addBubble(role, text) {
+function addBubble(role, text, words, confidence) {
   const el = document.createElement("div");
   el.className = `bubble ${role}${isArabic(text) ? " rtl" : ""}`;
   const who = document.createElement("span");
   who.className = "who";
   who.textContent = role === "caller" ? "You" : "Raabta";
+  // Per-turn confidence badge (caller turns only) — from AssemblyAI.
+  if (role === "caller" && typeof confidence === "number") {
+    const c = document.createElement("span");
+    c.className = "conf" + (confidence < LOWCONF ? " low" : "");
+    c.textContent = `${Math.round(confidence * 100)}%`;
+    who.appendChild(c);
+  }
   const body = document.createElement("span");
-  body.textContent = text;
+  fillWords(body, text, role === "caller" ? words : null); // shade caller words by confidence
   el.append(who, body);
   els.transcript.appendChild(el);
   els.transcript.scrollTop = els.transcript.scrollHeight;
@@ -81,13 +105,13 @@ function appendAgent(text) {
   els.transcript.scrollTop = els.transcript.scrollHeight;
 }
 
-function setInterim(text) {
+function setInterim(text, words) {
   if (!text) {
     els.interim.hidden = true;
     return;
   }
   els.interim.hidden = false;
-  els.interim.textContent = text;
+  fillWords(els.interim, text, words); // live confidence shading as you speak
   els.interim.classList.toggle("rtl", isArabic(text));
 }
 
@@ -118,11 +142,11 @@ function handleServerMessage(raw) {
       break;
     case "partial":
       setStatus("listening", "listening");
-      setInterim(m.text);
+      setInterim(m.text, m.words);
       break;
     case "final":
       setInterim("");
-      addBubble("caller", m.text);
+      addBubble("caller", m.text, m.words, m.confidence);
       currentAgentBubble = null; // next agent text starts a fresh bubble
       break;
     case "agent":
