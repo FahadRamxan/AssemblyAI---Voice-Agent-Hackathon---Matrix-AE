@@ -26,6 +26,8 @@ import { sha256 } from "./db/ids.js";
 import { resolveEmbedKey, originAllowed, touchEmbedKeyUsage } from "./embed.js";
 import { createRecorder } from "./recorder.js";
 import { ensureDemoKey } from "./seed.js";
+import { handleDashboard } from "./dashboard.js";
+import { json, readJson, clientIp, str } from "./http.js";
 import { ConcurrencyTracker, RateLimiter, loadLimits } from "./limits.js";
 import {
   signup,
@@ -205,6 +207,9 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse, deps: HttpD
   if (url === "/api/auth/logout" && method === "POST") return authLogout(req, res, db);
   if (url === "/api/auth/me" && method === "GET") return authMe(req, res, db);
 
+  // ---- owner dashboard plane (all requireOwner + tenant-scoped) ----
+  if (url.startsWith("/api/dashboard/")) return handleDashboard(req, res, db);
+
   await serveStatic(url, res);
 }
 
@@ -213,7 +218,7 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse, deps: HttpD
 async function authSignup(req: IncomingMessage, res: ServerResponse, db: HttpDeps["db"], rl: RateLimiter) {
   const ip = clientIp(req);
   if (!rl.check(`signup:${ip}`)) return json(res, 429, { error: "rate_limited" });
-  let body: Record<string, string>;
+  let body: Record<string, unknown>;
   try {
     body = await readJson(req);
   } catch {
@@ -221,9 +226,9 @@ async function authSignup(req: IncomingMessage, res: ServerResponse, db: HttpDep
   }
   try {
     const { user, tenant, principal } = signup(db, {
-      email: body.email ?? "",
-      password: body.password ?? "",
-      workspaceName: body.workspaceName ?? "",
+      email: str(body.email),
+      password: str(body.password),
+      workspaceName: str(body.workspaceName),
     });
     const { token, expiresAt } = createSession(db, {
       userId: principal.userId,
@@ -243,13 +248,13 @@ async function authSignup(req: IncomingMessage, res: ServerResponse, db: HttpDep
 async function authLogin(req: IncomingMessage, res: ServerResponse, db: HttpDeps["db"], rl: RateLimiter) {
   const ip = clientIp(req);
   if (!rl.check(`login:${ip}`)) return json(res, 429, { error: "rate_limited" });
-  let body: Record<string, string>;
+  let body: Record<string, unknown>;
   try {
     body = await readJson(req);
   } catch {
     return json(res, 400, { error: "invalid_json" });
   }
-  const principal = login(db, body.email ?? "", body.password ?? "");
+  const principal = login(db, str(body.email), str(body.password));
   if (!principal) return json(res, 401, { error: "invalid_credentials" });
   const ctx = principalContext(db, principal);
   if (!ctx) return json(res, 401, { error: "invalid_credentials" });
@@ -282,36 +287,6 @@ function publicUser(u: { id: string; email: string; name: string | null; role: s
   return { id: u.id, email: u.email, name: u.name, role: u.role };
 }
 
-function clientIp(req: IncomingMessage): string {
-  const xff = req.headers["x-forwarded-for"];
-  if (typeof xff === "string" && xff.length) return xff.split(",")[0]?.trim() ?? "unknown";
-  return req.socket.remoteAddress ?? "unknown";
-}
-
-async function readJson(req: IncomingMessage, limitBytes = 64 * 1024): Promise<Record<string, string>> {
-  return new Promise((resolve, reject) => {
-    let size = 0;
-    const chunks: Buffer[] = [];
-    req.on("data", (c: Buffer) => {
-      size += c.length;
-      if (size > limitBytes) {
-        reject(new Error("body too large"));
-        req.destroy();
-        return;
-      }
-      chunks.push(c);
-    });
-    req.on("end", () => {
-      if (!chunks.length) return resolve({});
-      try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
-      } catch {
-        reject(new Error("invalid json"));
-      }
-    });
-    req.on("error", reject);
-  });
-}
 
 async function serveStatic(url: string, res: ServerResponse): Promise<void> {
   const rel = url === "/" ? "index.html" : url.replace(/^\/+/, "");
@@ -328,9 +303,4 @@ async function serveStatic(url: string, res: ServerResponse): Promise<void> {
   } catch {
     res.writeHead(404, { "content-type": "text/plain" }).end("not found");
   }
-}
-
-function json(res: ServerResponse, code: number, body: unknown): void {
-  res.writeHead(code, { "content-type": "application/json; charset=utf-8" });
-  res.end(JSON.stringify(body));
 }
