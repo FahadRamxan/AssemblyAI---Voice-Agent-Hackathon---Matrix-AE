@@ -41,6 +41,7 @@ const els = {
   meterFill: document.getElementById("meterFill"),
   textForm: document.getElementById("textForm"),
   textInput: document.getElementById("textInput"),
+  orb: document.getElementById("orb"),
 };
 
 let ws = null;
@@ -93,6 +94,8 @@ function setInterim(text) {
 function setStatus(state, text) {
   els.statusDot.className = `dot ${state}`;
   els.statusText.textContent = text ?? state;
+  document.body.dataset.state = state; // drives the orb visualizer (see styles.css)
+  if (state !== "listening") document.documentElement.style.setProperty("--level", "0");
 }
 
 // --------------------------------------------------------------------------
@@ -247,6 +250,7 @@ function onMicFrame(buf) {
   for (let i = 0; i < pcm.length; i++) sum += pcm[i] * pcm[i];
   const rms = Math.sqrt(sum / pcm.length) / 32768;
   els.meterFill.style.width = Math.min(100, rms * 320) + "%";
+  document.documentElement.style.setProperty("--level", Math.min(0.5, rms * 3).toFixed(3)); // orb reacts to voice
   // uplink (buffer until the session is ready)
   if (micLive && ws && ws.readyState === WebSocket.OPEN) ws.send(buf);
   else if (!micLive) preroll.push(buf);
@@ -293,6 +297,9 @@ function endCall() {
 // --------------------------------------------------------------------------
 els.startBtn.addEventListener("click", startCall);
 els.stopBtn.addEventListener("click", endCall);
+els.orb?.addEventListener("click", () => {
+  if (!micLive && !els.startBtn.disabled) startCall(); // tap the orb to start
+});
 els.textForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = els.textInput.value.trim();

@@ -10,14 +10,15 @@
     />
     <link rel="stylesheet" href="/styles.css" />
   </head>
-  <body>
+  <body data-state="idle">
+    <div class="aurora" aria-hidden="true"></div>
     <div class="app">
       <header class="topbar">
         <div class="brand">
           <span class="logo">◉</span>
           <div>
             <h1>Raabta&nbsp;Live</h1>
-            <p class="tag">real-time voice agent · powered by AssemblyAI Universal-Streaming</p>
+            <p class="tag">real-time voice agents · powered by AssemblyAI Universal-Streaming</p>
           </div>
         </div>
         <div class="status">
@@ -27,16 +28,26 @@
       </header>
 
       <main class="stage">
+        <!-- the voice orb: the live visualizer -->
+        <div class="orb-wrap">
+          <div class="orb-rings" aria-hidden="true"><span></span><span></span><span></span></div>
+          <button id="orb" class="orb" aria-label="Start call">
+            <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+              <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+              <line x1="12" y1="19" x2="12" y2="22" />
+            </svg>
+          </button>
+        </div>
+
         <section id="transcript" class="transcript" aria-live="polite"></section>
         <div id="interim" class="interim" hidden></div>
         <p id="hint" class="hint">
-          Click <strong>Start call</strong> and allow the microphone. Speak naturally — you can talk over
-          the agent to interrupt it. No mic? Type below to test the brain.
+          Tap the orb (or <strong>Start call</strong>) and allow the microphone. Speak naturally — you can
+          talk over the agent to interrupt it. No mic? Type below to test the brain.
         </p>
-        <p class="hint" style="margin-top: 8px">
-          <a href="/dashboard" style="color: #2dd4bf; font-weight: 600; text-decoration: none"
-            >Building your own agent? Open the dashboard →</a
-          >
+        <p class="hint sub">
+          <a href="/dashboard" class="dash-link">Building your own agent? Open the dashboard →</a>
         </p>
       </main>
 
@@ -45,12 +56,7 @@
         <button id="stopBtn" class="btn ghost" disabled>End</button>
         <div class="meter" title="microphone level"><span id="meterFill"></span></div>
         <form id="textForm" class="typebar">
-          <input
-            id="textInput"
-            type="text"
-            autocomplete="off"
-            placeholder="or type to test the brain…"
-          />
+          <input id="textInput" type="text" autocomplete="off" placeholder="or type to test the brain…" />
           <button class="btn ghost" type="submit">Send</button>
         </form>
       </footer>
