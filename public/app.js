@@ -279,7 +279,7 @@ els.textForm.addEventListener("submit", (e) => {
   const send = () => ws.send(JSON.stringify({ type: "text", text }));
   if (ws.readyState === WebSocket.OPEN) send();
   else ws.addEventListener("open", send, { once: true });
-  addBubble("caller", text);
-  currentAgentBubble = null;
+  // No optimistic echo — the server replies with a `final` for typed input too,
+  // so the caller bubble renders from that (one source of truth, same as the mic path).
   els.textInput.value = "";
 });
