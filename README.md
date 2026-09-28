@@ -32,7 +32,8 @@ a small but complete SaaS:
 The voice loop itself is built on **[AssemblyAI Universal-Streaming](https://www.assemblyai.com/docs/speech-to-text/universal-streaming)**
 (the Path-2 track): the caller's audio streams to AssemblyAI over a WebSocket, and its semantic
 **end-of-turn detection** decides the moment the caller has finished — which is what makes the
-turn-taking (and the barge-in) feel human.
+turn-taking (and the barge-in) feel human. We go beyond the transcript text and use AssemblyAI's
+**per-word confidence** to drive behaviour (see "confidence-aware" below).
 
 ## The 60-second demo
 
@@ -48,6 +49,10 @@ Every number on that dashboard came from a call your agent actually handled — 
 - **Barge-in that actually works.** Start talking over the agent and the in-flight LLM + TTS abort
   instantly and the browser flushes queued audio — the hardest thing to get right in a voice agent, and
   now a **measured metric** (barge-in rate) on every tenant's dashboard.
+- **Confidence-aware — it knows when it mis-heard.** Raabta reads AssemblyAI's **word-level confidence**
+  on every turn: uncertain words are shaded live in the transcript, and when an important value (a number,
+  a name) comes through with low confidence, the agent **reads it back to confirm** instead of quietly
+  booking the wrong number. That's using the STT *signal*, not just its text.
 - **Multi-tenant by construction.** Every row is scoped to a tenant; the data layer bakes `WHERE tenant_id`
   into every query, so one customer can never see another's calls — enforced by a build-failing isolation test.
 - **Embed anywhere.** A publishable `pk_live_` key (safe in a browser, like a Stripe key) drops your agent

@@ -29,6 +29,10 @@ the final transcript streams to an LLM, and each finished sentence goes to text-
 words come back in about a second. When you start talking over the agent, the in-flight LLM and TTS abort
 instantly and the browser flushes queued audio — true barge-in, the hardest part of a voice agent to get right.
 
+It also goes beyond the transcript text: it reads AssemblyAI's per-word confidence on every turn, shades
+uncertain words live, and when an important value (a number, a name) comes through with low confidence the
+agent reads it back to confirm — using the recognition signal, not just the words.
+
 It's multi-tenant by construction: every record is tenant-scoped and a build-failing test proves one
 customer can never see another's data. The agent's brain and voice are bilingual (Arabic and English);
 AssemblyAI streaming STT is English-first today, which we state honestly rather than fake.

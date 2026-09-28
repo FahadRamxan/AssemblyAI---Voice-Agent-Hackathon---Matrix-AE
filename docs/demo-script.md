@@ -25,7 +25,13 @@ While the agent is still talking, cut in:
 Call out that it **stopped instantly** and answered the new question — AssemblyAI's end-of-turn detection
 plus our barge-in (the in-flight reply + audio are aborted the moment you speak). Do it twice if subtle.
 
-**0:45 — It's a platform, not a demo**
+**0:40 — It knows when it mis-heard (the AssemblyAI depth beat)**
+Say a phone number and mumble a digit or two. Point out: the uncertain words are **shaded** in the
+transcript (with a confidence badge on the turn), and the agent **reads the number back to confirm**.
+> "That's AssemblyAI's word-level confidence driving the agent — it doesn't just transcribe, it knows when
+> it wasn't sure and checks, instead of booking the wrong number."
+
+**1:00 — It's a platform, not a demo**
 Go to `/dashboard`. The call you just made is already on the **Overview** (calls, avg duration,
 **barge-in rate**, reply latency). Open **Embed & keys**, copy the one-line snippet, and click
 **Preview on a demo site** — a plain business page with *your* agent's floating Talk button.
