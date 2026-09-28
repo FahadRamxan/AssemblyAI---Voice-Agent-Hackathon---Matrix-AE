@@ -208,6 +208,17 @@ function handleServerMessage(raw) {
     case "status":
       if (m.text === "thinking") setStatus("thinking", "thinking");
       break;
+    case "ended":
+      addBubble(
+        "agent",
+        m.reason === "idle"
+          ? "📞 Call ended — no activity for a while."
+          : m.reason === "timeout"
+            ? "📞 Call ended — reached the time limit."
+            : "📞 Call ended.",
+      );
+      endCall(); // tear down mic/playback/UI (idempotent — the server already closed the socket)
+      break;
     case "error":
       addBubble("agent", `⚠ ${m.message}`);
       setStatus("error", "error");

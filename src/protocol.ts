@@ -28,6 +28,7 @@ export type ServerMessage =
   | { type: "tts_start" }
   | { type: "tts_stop"; reason?: "barge_in" | "done" }
   | { type: "status"; text: string }
+  | { type: "ended"; reason: "idle" | "timeout" | "server" } // server hung up (silence / wall-clock / admin)
   | { type: "error"; message: string };
 
 /** client -> server */

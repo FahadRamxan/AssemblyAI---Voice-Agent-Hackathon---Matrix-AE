@@ -132,6 +132,7 @@ export function createServer(cfg: Config) {
         platform: cfg,
         callId,
         sessionMaxMs: limits.sessionMaxMs,
+        idleTimeoutMs: limits.idleTimeoutMs,
         recorder: createRecorder(db, resolved.tenantId, callId),
       };
       attachSession(ws, ctx, () => concurrency.release(resolved.tenantId));

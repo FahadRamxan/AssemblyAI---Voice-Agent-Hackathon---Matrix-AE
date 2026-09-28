@@ -56,6 +56,8 @@ export interface SessionContext {
   platform: PlatformProviders;
   callId: string;
   sessionMaxMs: number;
+  /** Auto-hang-up after this much silence (ms) while the agent isn't speaking. 0 disables. */
+  idleTimeoutMs: number;
   recorder?: CallRecorder;
 }
 
@@ -70,6 +72,7 @@ export class VoiceSession {
   private closed = false;
   private started = false; // start() runs exactly once per socket (no duplicate STT/greeting/spend)
   private maxTimer: ReturnType<typeof setTimeout> | null = null;
+  private idleTimer: ReturnType<typeof setTimeout> | null = null; // fires after idleTimeoutMs of silence
   private turnStartAt = 0;
   private firstChunkAt = 0;
   private readonly langTally = { en: 0, ar: 0 };
@@ -125,7 +128,13 @@ export class VoiceSession {
     // Hard wall-clock cap: bound a single session's provider spend.
     this.maxTimer = setTimeout(() => {
       this.send({ type: "status", text: "session time limit reached" });
+      this.send({ type: "ended", reason: "timeout" });
       this.close("timeout");
+      try {
+        this.browser.close(4409, "session time limit");
+      } catch {
+        /* already closing */
+      }
     }, this.ctx.sessionMaxMs);
     this.maxTimer.unref?.();
 
@@ -136,6 +145,9 @@ export class VoiceSession {
       this.ctx.recorder?.agentReply(greeting, detectLang(greeting), 0); // seq 0, latency null
       void this.speak(greeting, ++this.turnSeq);
     }
+
+    // Begin the silence countdown (speak() above will have already reset it if there's a greeting).
+    this.resetIdleTimer();
   }
 
   /** Raw mic PCM16 from the browser. */
@@ -150,12 +162,14 @@ export class VoiceSession {
   }
 
   private onPartial(text: string, words?: SttWord[]): void {
+    this.resetIdleTimer(); // caller is speaking — not idle
     this.send({ type: "partial", text, words });
     // Caller started talking while the agent was speaking -> barge-in.
     if (this.ttsActive) this.bargeIn();
   }
 
   private onFinal(text: string, meta?: SttMeta): void {
+    this.resetIdleTimer(); // caller finished a turn — reset the silence clock
     const words = meta?.words ?? [];
     const confidence = utteranceConfidence(words, meta?.endOfTurnConfidence);
     this.send({ type: "final", text, words, confidence, language: meta?.languageCode });
@@ -194,6 +208,7 @@ export class VoiceSession {
     this.turnStartAt = Date.now();
     this.firstChunkAt = 0;
     this.send({ type: "status", text: "thinking" });
+    this.resetIdleTimer(); // the agent is working — not idle
 
     try {
       for await (const delta of streamLlm(this.ctx.platform.llm, this.convo.messages(), this.llmAbort.signal)) {
@@ -226,6 +241,7 @@ export class VoiceSession {
           this.ttsActive = false;
           this.send({ type: "tts_stop", reason: "done" });
         }
+        this.resetIdleTimer(); // agent went quiet — start the post-reply silence window
       }
     }
   }
@@ -235,6 +251,7 @@ export class VoiceSession {
     const text = sentence.trim();
     if (!text || this.closed) return;
     this.send({ type: "agent", text });
+    this.resetIdleTimer(); // the agent is actively replying
     if (!this.ttsConfig) return; // text-only mode (no voice configured)
 
     this.ttsAbort = new AbortController();
@@ -266,6 +283,36 @@ export class VoiceSession {
       this.ttsActive = false;
       this.send({ type: "tts_stop", reason: "barge_in" });
     }
+    this.resetIdleTimer(); // caller talked over the agent — the silence clock restarts
+  }
+
+  /** (Re)arm the silence timer. Called on every sign of life; disabled when idleTimeoutMs<=0. */
+  private resetIdleTimer(): void {
+    if (this.closed) return;
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    const ms = this.ctx.idleTimeoutMs;
+    if (!ms || ms <= 0) return; // 0 disables auto-hang-up
+    this.idleTimer = setTimeout(() => this.onIdle(), ms);
+    this.idleTimer.unref?.();
+  }
+
+  /** Silence window elapsed. If the agent is mid-utterance, wait it out; else hang up. */
+  private onIdle(): void {
+    if (this.closed) return;
+    if (this.ttsActive) {
+      this.resetIdleTimer(); // don't cut the agent off mid-sentence — re-arm
+      return;
+    }
+    log.info("idle hang-up", { callId: this.ctx.callId });
+    this.send({ type: "ended", reason: "idle" });
+    // Finalize with reason=idle BEFORE closing the socket, so cleanup()'s later
+    // close() (with the default reason) is a guarded no-op.
+    this.close("idle");
+    try {
+      this.browser.close(4409, "idle timeout");
+    } catch {
+      /* already closing */
+    }
   }
 
   private abortInflight(): void {
@@ -281,6 +328,10 @@ export class VoiceSession {
     if (this.maxTimer) {
       clearTimeout(this.maxTimer);
       this.maxTimer = null;
+    }
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
     }
     this.abortInflight();
     this.stt.close();

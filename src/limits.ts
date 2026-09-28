@@ -12,12 +12,15 @@ export interface LimitConfig {
   maxConcurrentPerTenant: number;
   /** Hard cap on a single session's wall-clock (ms) — bounds provider spend. */
   sessionMaxMs: number;
+  /** Auto-hang-up after this many ms of no caller speech while the agent isn't speaking. 0 disables. */
+  idleTimeoutMs: number;
 }
 
 export function loadLimits(): LimitConfig {
   return {
     maxConcurrentPerTenant: Number(process.env.MAX_CONCURRENT_CALLS_PER_TENANT) || 5,
     sessionMaxMs: Number(process.env.SESSION_MAX_MS) || 10 * 60 * 1000,
+    idleTimeoutMs: Number(process.env.IDLE_TIMEOUT_MS) || 20_000,
   };
 }
 
