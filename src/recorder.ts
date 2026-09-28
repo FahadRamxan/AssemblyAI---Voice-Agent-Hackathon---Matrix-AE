@@ -10,6 +10,7 @@
 import type { Db } from "./db/db.js";
 import { scopedRepo } from "./db/repo.js";
 import type { CallRecorder } from "./session.js";
+import { liveOps } from "./liveops.js";
 import { log } from "./logger.js";
 
 export function createRecorder(db: Db, tenantId: string, callId: string): CallRecorder {
@@ -24,12 +25,20 @@ export function createRecorder(db: Db, tenantId: string, callId: string): CallRe
     }
   };
 
+  // Register the call in the Live Ops registry (best-effort — never breaks the call).
+  safe(() => {
+    const call = repo.getCall(callId);
+    const agentName = call ? (repo.getAgent(call.agent_id)?.name ?? "Agent") : "Agent";
+    liveOps.start({ callId, tenantId, agentName });
+  });
+
   return {
     callerTurn(text, lang) {
       safe(() => {
         repo.addTurn({ callId, seq: seq++, role: "caller", text, lang });
         repo.incTurnCount(callId); // a "turn" = a caller utterance
       });
+      liveOps.turn(callId, "caller", text);
     },
     agentReply(text, lang, latencyMs) {
       safe(() =>
@@ -43,12 +52,15 @@ export function createRecorder(db: Db, tenantId: string, callId: string): CallRe
           latencyMs: latencyMs > 0 ? latencyMs : null,
         }),
       );
+      liveOps.turn(callId, "agent", text, latencyMs);
     },
     bargeIn() {
       safe(() => repo.incBargeIn(callId));
+      liveOps.bargeIn(callId);
     },
     finalize(reason, languagePrimary, detectedLang) {
       safe(() => repo.finalizeCall(callId, { endedReason: reason, languagePrimary, detectedLang }));
+      liveOps.end(callId);
     },
   };
 }

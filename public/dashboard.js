@@ -115,10 +115,17 @@ function showApp() {
   $("#themeBtn").onclick = toggleTheme;
   $("#paletteBtn").onclick = openPalette;
   syncThemeIcon();
+  if (liveBadgeTimer) clearInterval(liveBadgeTimer);
+  startLiveBadgePoll();
   renderTab();
 }
 
 async function doLogout() {
+  stopLivePoll();
+  if (liveBadgeTimer) {
+    clearInterval(liveBadgeTimer);
+    liveBadgeTimer = null;
+  }
   await api("POST", "/api/auth/logout");
   me = null;
   showAuth();
@@ -228,13 +235,22 @@ function goTab(tab) {
   renderTab();
 }
 
+let livePollTimer = null;
+function stopLivePoll() {
+  if (livePollTimer) {
+    clearInterval(livePollTimer);
+    livePollTimer = null;
+  }
+}
+
 function renderTab() {
+  stopLivePoll(); // leaving any tab stops the live poller
   const v = $("#view");
   v.innerHTML = `<div class="loading"><span class="spinner"></span> Loading…</div>`;
   v.classList.remove("view-in");
   void v.offsetWidth; // restart the fade-in
   v.classList.add("view-in");
-  ({ home: tabHome, agents: tabAgents, keys: tabKeys, calls: tabCalls, talk: tabTalk })[activeTab](v);
+  ({ home: tabHome, live: tabLive, agents: tabAgents, keys: tabKeys, calls: tabCalls, talk: tabTalk })[activeTab](v);
 }
 
 /** A reusable empty-state block (icon + message + optional CTA). */
@@ -373,6 +389,77 @@ function usageHtml(u) {
     <div class="usage-cost">≈ <b>$${u.estCostMonthUsd.toFixed(2)}</b> est. AssemblyAI streaming this month</div>
     <div class="usage-foot muted">${u.streamingMinutesTotal} min all-time · rate $${u.usdPerMin.toFixed(4)}/min (est.)</div>
   </div>`;
+}
+
+// --------------------------------------------------------------------------
+// Live ops
+// --------------------------------------------------------------------------
+let liveSig = "";
+async function tabLive(v) {
+  v.innerHTML = `
+    <div class="view-head">
+      <div><h2 class="view-title">Live ops</h2><p class="view-sub">Calls happening right now — running transcript + latency, refreshing every 2s.</p></div>
+      <span class="live-pill"><span class="live-dot"></span> live</span>
+    </div>
+    <div id="liveGrid"></div>`;
+  liveSig = "";
+  const paint = async () => {
+    const { data } = await api("GET", "/api/dashboard/live");
+    const grid = $("#liveGrid");
+    if (!grid) return; // tab switched away
+    const calls = data?.calls || [];
+    const nowT = data?.now || Date.now();
+    const sig = JSON.stringify(calls.map((c) => [c.callId, c.turnCount, c.bargeInCount, c.lastAgent, c.lastCaller]));
+    if (sig === liveSig && calls.length) return; // no change → no flicker (timers still tick on change)
+    liveSig = sig;
+    if (!calls.length) {
+      grid.innerHTML = emptyState(
+        ICONS.calls,
+        "No active calls",
+        "When someone is talking to your agent, the live conversation shows up here. Open “Talk to your agent” in another tab to try it.",
+        "Talk to your agent",
+        "talk",
+      );
+      wireEmptyCtas(grid);
+      return;
+    }
+    grid.innerHTML = `<div class="live-grid">${calls.map((c) => liveCard(c, nowT)).join("")}</div>`;
+  };
+  await paint();
+  livePollTimer = setInterval(paint, 2000);
+}
+
+function liveCard(c, nowT) {
+  const elapsed = Math.max(0, Math.round((nowT - c.startedAt) / 1000));
+  const mmss = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
+  return `<div class="live-card">
+    <div class="live-card-head"><span class="live-dot"></span><b>${esc(c.agentName)}</b><span class="muted live-elapsed">${mmss}</span></div>
+    <div class="live-stats">
+      <span>${c.turnCount} turn${c.turnCount === 1 ? "" : "s"}</span>
+      ${c.bargeInCount ? `<span class="pill accent">${c.bargeInCount} barge-in</span>` : ""}
+      ${c.lastLatencyMs ? `<span class="live-lat">⚡ ${c.lastLatencyMs}ms</span>` : ""}
+    </div>
+    <div class="live-lines">
+      ${c.lastCaller ? `<div class="live-line caller"><span>Caller</span>${esc(c.lastCaller)}</div>` : ""}
+      ${c.lastAgent ? `<div class="live-line agent"><span>Agent</span>${esc(c.lastAgent)}</div>` : ""}
+      ${!c.lastCaller && !c.lastAgent ? `<div class="muted">Connecting…</div>` : ""}
+    </div>
+  </div>`;
+}
+
+// A lightweight always-on poll that shows the active-call count on the Live nav item.
+let liveBadgeTimer = null;
+function startLiveBadgePoll() {
+  const tick = async () => {
+    const { ok, data } = await api("GET", "/api/dashboard/live");
+    const badge = $("#liveBadge");
+    if (!badge) return;
+    const n = ok && data?.calls ? data.calls.length : 0;
+    badge.hidden = n === 0;
+    badge.textContent = String(n);
+  };
+  void tick();
+  liveBadgeTimer = setInterval(tick, 6000);
 }
 
 function areaChart(days) {

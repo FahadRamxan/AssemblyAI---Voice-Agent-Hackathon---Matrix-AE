@@ -19,6 +19,7 @@ import type { Agent, EmbedKey } from "./db/types.js";
 import { scopedRepo } from "./db/repo.js";
 import { requireOwner } from "./auth.js";
 import { computeAnalytics } from "./analytics.js";
+import { liveOps } from "./liveops.js";
 import { json, readJson, str, optStr, strArray } from "./http.js";
 
 // "multi" opts the agent into AssemblyAI's multilingual streaming model (live EN/ES/FR/DE/IT/PT).
@@ -118,6 +119,11 @@ export async function handleDashboard(req: IncomingMessage, res: ServerResponse,
       const call = repo.getCall(callId);
       if (!call) return json(res, 404, { error: "call_not_found" });
       return json(res, 200, { call, turns: repo.listTurns(callId) });
+    }
+
+    // ---- live ops ----
+    if (path === "/live" && method === "GET") {
+      return json(res, 200, { calls: liveOps.listForTenant(principal.tenantId), now: Date.now() });
     }
 
     // ---- analytics ----
