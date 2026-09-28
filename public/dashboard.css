@@ -1217,6 +1217,9 @@ iframe.talk {
 }
 
 /* ---- live ops ---- */
+.live-badge[hidden] {
+  display: none; /* author rule so the `hidden` attribute wins over display:inline-grid */
+}
 .live-badge {
   margin-left: auto;
   min-width: 18px;
