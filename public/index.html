@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Raabta Live — real-time voice agent on AssemblyAI</title>
+    <meta
+      name="description"
+      content="A real-time voice agent built on AssemblyAI Universal-Streaming — talk to it, interrupt it, read along."
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="logo">◉</span>
+          <div>
+            <h1>Raabta&nbsp;Live</h1>
+            <p class="tag">real-time voice agent · powered by AssemblyAI Universal-Streaming</p>
+          </div>
+        </div>
+        <div class="status">
+          <span id="statusDot" class="dot idle"></span>
+          <span id="statusText">idle</span>
+        </div>
+      </header>
+
+      <main class="stage">
+        <section id="transcript" class="transcript" aria-live="polite"></section>
+        <div id="interim" class="interim" hidden></div>
+        <p id="hint" class="hint">
+          Click <strong>Start call</strong> and allow the microphone. Speak naturally — you can talk over
+          the agent to interrupt it. No mic? Type below to test the brain.
+        </p>
+      </main>
+
+      <footer class="controls">
+        <button id="startBtn" class="btn primary">Start call</button>
+        <button id="stopBtn" class="btn ghost" disabled>End</button>
+        <div class="meter" title="microphone level"><span id="meterFill"></span></div>
+        <form id="textForm" class="typebar">
+          <input
+            id="textInput"
+            type="text"
+            autocomplete="off"
+            placeholder="or type to test the brain…"
+          />
+          <button class="btn ghost" type="submit">Send</button>
+        </form>
+      </footer>
+    </div>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
