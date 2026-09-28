@@ -385,3 +385,38 @@ iframe.talk {
   display: block;
   height: 100%;
 }
+
+/* ---- brand cohesion with the landing page ---- */
+.aurora {
+  position: fixed;
+  inset: -20%;
+  z-index: -1;
+  background:
+    radial-gradient(38vw 38vw at 82% 4%, rgba(99, 102, 241, 0.22), transparent 60%),
+    radial-gradient(34vw 34vw at 8% 96%, rgba(45, 212, 191, 0.16), transparent 60%);
+  filter: blur(30px);
+  animation: drift 24s ease-in-out infinite alternate;
+}
+@keyframes drift {
+  50% {
+    transform: translate3d(2%, -2%, 0) scale(1.08);
+  }
+}
+.brand {
+  background: linear-gradient(120deg, #ffffff, #9fe9df 60%, #a5a8f7);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.brand .dot {
+  -webkit-text-fill-color: var(--accent); /* keep the logo mark teal, not gradient-clipped */
+}
+.tile {
+  transition:
+    transform 0.12s ease,
+    border-color 0.2s ease;
+}
+.tile:hover {
+  transform: translateY(-2px);
+  border-color: rgba(45, 212, 191, 0.4);
+}
