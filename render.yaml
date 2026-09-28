@@ -22,3 +22,16 @@ services:
         sync: false
       - key: AGENT_GREETING
         value: Thanks for calling Raabta. How can I help you today?
+      - key: DATA_DIR
+        value: /data
+      - key: SESSION_MAX_MS
+        value: "600000"
+      - key: IP_HASH_SALT
+        sync: false
+# NOTE: Render's FREE plan has an EPHEMERAL filesystem — the SQLite DB at
+# /data resets on every redeploy/restart (fine for a live demo session). For
+# durable accounts/calls, upgrade the plan and attach a persistent disk:
+#     disk:
+#       name: raabta-data
+#       mountPath: /data
+#       sizeGB: 1
