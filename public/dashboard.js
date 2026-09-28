@@ -716,6 +716,34 @@ async function tabKeys(v) {
 // --------------------------------------------------------------------------
 // Calls
 // --------------------------------------------------------------------------
+function csvCell(v) {
+  const s = String(v ?? "");
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function exportCallsCsv(calls) {
+  const header = ["Started", "Duration (s)", "Turns", "Barge-ins", "Language", "Variant", "Status"];
+  const rows = calls.map((c) => [
+    new Date(c.started_at).toISOString(),
+    c.duration_ms != null ? (c.duration_ms / 1000).toFixed(1) : "",
+    c.turn_count,
+    c.barge_in_count,
+    c.detected_lang || c.language_primary || "",
+    c.variant || "",
+    c.status,
+  ]);
+  const csv = [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `raabta-calls-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast(`Exported ${calls.length} call${calls.length === 1 ? "" : "s"}`);
+}
+
 async function tabCalls(v) {
   const { data } = await api("GET", "/api/dashboard/calls");
   const calls = data.calls || [];
@@ -729,8 +757,10 @@ async function tabCalls(v) {
     return;
   }
   v.innerHTML = `
-    <h2 class="view-title">Calls</h2>
-    <p class="view-sub">Every conversation your agents handled — click one to read the transcript.</p>
+    <div class="view-head">
+      <div><h2 class="view-title">Calls</h2><p class="view-sub">Every conversation your agents handled — click one to read the transcript.</p></div>
+      <button class="btn sm" id="exportCsv">⬇ Export CSV</button>
+    </div>
     <div class="panel table-panel">
       <table><thead><tr><th>Started</th><th>Duration</th><th>Turns</th><th>Barge-ins</th><th>Lang</th><th>Status</th></tr></thead>
       <tbody>${calls
@@ -748,6 +778,7 @@ async function tabCalls(v) {
     </div>
     <div id="callDetail"></div>`;
   window.RM?.reveal(v);
+  $("#exportCsv").onclick = () => exportCallsCsv(calls);
   for (const tr of v.querySelectorAll("[data-call]")) {
     tr.onclick = async () => {
       const callId = tr.dataset.call;
