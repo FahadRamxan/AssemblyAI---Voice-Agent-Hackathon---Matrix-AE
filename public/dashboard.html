@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Raabta Live — Dashboard</title>
+    <link rel="stylesheet" href="/dashboard.css" />
+  </head>
+  <body>
+    <!-- auth view -->
+    <div id="auth" class="hidden">
+      <div class="card">
+        <div class="brand"><span class="dot">◉</span> Raabta Live</div>
+        <p class="sub" id="authSub">Sign in to your workspace.</p>
+        <form id="authForm">
+          <div id="wsField" class="hidden">
+            <label for="workspace">Business / workspace name</label>
+            <input id="workspace" autocomplete="organization" placeholder="Acme Clinic" />
+          </div>
+          <label for="email">Email</label>
+          <input id="email" type="email" autocomplete="email" placeholder="you@business.com" />
+          <label for="password">Password</label>
+          <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" />
+          <button class="btn block" type="submit" id="authBtn">Sign in</button>
+          <div class="err" id="authErr"></div>
+        </form>
+        <div class="switch" id="authSwitch"></div>
+      </div>
+    </div>
+
+    <!-- app view -->
+    <div id="app" class="hidden">
+      <aside class="sidebar">
+        <div class="brand"><span class="dot">◉</span> Raabta Live</div>
+        <nav class="nav" id="nav">
+          <button data-tab="home" class="active">Overview</button>
+          <button data-tab="agents">Agents</button>
+          <button data-tab="keys">Embed &amp; keys</button>
+          <button data-tab="calls">Calls</button>
+          <button data-tab="talk">Talk to your agent</button>
+        </nav>
+        <div class="spacer"></div>
+        <div class="who" id="who"></div>
+        <button class="btn ghost sm" id="logoutBtn">Log out</button>
+      </aside>
+      <main id="view"></main>
+    </div>
+
+    <div id="toast"></div>
+    <script src="/dashboard.js"></script>
+  </body>
+</html>
