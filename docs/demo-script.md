@@ -14,7 +14,8 @@ agent's own voice doesn't trip the barge-in; set `CARTESIA_API_KEY` for the snap
 Open `/`, tap the **orb**. Say:
 > "Hi, I'd like to book an appointment for next week."
 
-Point out: your words appear **as you speak**, and the agent answers out loud in about a second.
+Point out: your words appear **as you speak**, and the agent answers out loud in about a second. Glance at the
+**latency pill (top-right)** — it shows AssemblyAI's live time-to-first-word for the turn you just spoke.
 
 **0:20 — The differentiator: barge-in**
 > "Here's the part most voice bots get wrong — interrupting."
@@ -30,6 +31,15 @@ Say a phone number and mumble a digit or two. Point out: the uncertain words are
 transcript (with a confidence badge on the turn), and the agent **reads the number back to confirm**.
 > "That's AssemblyAI's word-level confidence driving the agent — it doesn't just transcribe, it knows when
 > it wasn't sure and checks, instead of booking the wrong number."
+
+**0:55 — Multilingual, live (switch languages on the fly)**
+With a **Multilingual** agent selected, say a sentence in Spanish (or French/German/Italian/Portuguese):
+> "Hola, quiero reservar una mesa para dos personas esta noche."
+
+Point out: it transcribes the Spanish **live**, the caller turn is tagged **ES**, and the agent **replies in
+Spanish** — one agent, six languages, detected per turn.
+> "That's AssemblyAI's multilingual streaming model detecting the language on every turn — no config switch,
+> no separate bot."
 
 **1:00 — It's a platform, not a demo**
 Go to `/dashboard`. The call you just made is already on the **Overview** (calls, avg duration,
@@ -60,5 +70,7 @@ Show `docs/architecture.md`:
 - Do the **barge-in twice** — it's the money shot.
 - Headphones + `echoCancellation` (on by default) so the demo doesn't self-interrupt.
 - Flash the DevTools **Network** tab for a second to show the live WebSocket frames — proves it's real.
-- Optional bilingual beat: ask "Can you say that in Arabic?" — the reply comes back in Arabic (RTL transcript);
-  note that live *transcription* is English-first today (honest framing).
+- Live STT covers English + Spanish/French/German/Italian/Portuguese (the multilingual model). **Arabic**
+  streaming STT isn't supported yet — if you do the Arabic beat, ask "Can you say that in Arabic?" so the
+  *reply* comes back in Arabic (RTL transcript) and keep the framing honest: brain + voice are bilingual,
+  live Arabic transcription is batch-only today.

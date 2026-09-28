@@ -8,9 +8,9 @@ Raabta Live: voice agents on AssemblyAI
 
 ## Short Description (50–255 chars)
 
-A multi-tenant SaaS for real-time voice agents on AssemblyAI. Sign up, build an agent, embed it on any
-site with one line, then watch live calls, transcripts and analytics — with true barge-in: you can talk
-over it like a real phone call.
+A multi-tenant SaaS for real-time voice agents on AssemblyAI. Build an agent, embed it on any site in one
+line, and watch live calls + analytics. True barge-in, live multilingual transcription (6 languages,
+detected per turn), and confidence-aware confirmations — talk over it like a real phone call.
 
 ## Long Description (100+ words)
 
@@ -29,16 +29,24 @@ the final transcript streams to an LLM, and each finished sentence goes to text-
 words come back in about a second. When you start talking over the agent, the in-flight LLM and TTS abort
 instantly and the browser flushes queued audio — true barge-in, the hardest part of a voice agent to get right.
 
-It also goes beyond the transcript text: it reads AssemblyAI's per-word confidence on every turn, shades
-uncertain words live, and when an important value (a number, a name) comes through with low confidence the
-agent reads it back to confirm — using the recognition signal, not just the words.
+It goes beyond the transcript text in two ways that use AssemblyAI's signal, not just its words. First,
+**per-word confidence**: uncertain words are shaded live and, when an important value (a number, a name)
+comes through with low confidence, the agent reads it back to confirm instead of booking the wrong thing.
+Second, a **live latency HUD** times each turn from speech onset to AssemblyAI's first transcribed word —
+real telemetry on screen, so the "immediate" claim is measurable, not marketing.
+
+It's genuinely multilingual. Flip an agent to Multilingual and AssemblyAI's universal-streaming-multilingual
+model transcribes English, Spanish, French, German, Italian and Portuguese live, detecting the spoken
+language on every finalized turn; the transcript tags each caller turn and the agent replies in that
+language — one agent, six languages, no config switch. (Verified live: a Spanish clip came back transcribed
+word-for-word with language_code "es" at 0.92 confidence.)
 
 It's multi-tenant by construction: every record is tenant-scoped and a build-failing test proves one
-customer can never see another's data. The agent's brain and voice are bilingual (Arabic and English);
-AssemblyAI streaming STT is English-first today, which we state honestly rather than fake.
+customer can never see another's data. The agent's brain and voice are also bilingual in Arabic and English;
+AssemblyAI streaming STT does not support Arabic yet (batch only), which we state honestly rather than fake.
 
-Stack: TypeScript, Node.js, AssemblyAI Universal-Streaming, WebSocket, Web Audio API, SQLite, OpenAI/Gemini,
-ElevenLabs/Cartesia. MIT-licensed and self-contained. Built by Matrix AE.
+Stack: TypeScript, Node.js, AssemblyAI Universal-Streaming (+ multilingual model), WebSocket, Web Audio API,
+SQLite, OpenAI/Gemini, ElevenLabs/Cartesia. MIT-licensed and self-contained. Built by Matrix AE.
 
 ## Categories
 
@@ -47,8 +55,9 @@ Voice AI / Conversational AI · Developer Tools · SaaS / Productivity · Custom
 
 ## Technologies Used
 
-AssemblyAI Universal-Streaming, TypeScript, Node.js, WebSocket, Web Audio API (AudioWorklet),
-SQLite (better-sqlite3), OpenAI, Google Gemini, ElevenLabs, Cartesia
+AssemblyAI Universal-Streaming (incl. universal-streaming-multilingual + word-level confidence),
+TypeScript, Node.js, WebSocket, Web Audio API (AudioWorklet), SQLite (better-sqlite3), OpenAI, Google Gemini,
+ElevenLabs, Cartesia
 
 ---
 
@@ -58,7 +67,7 @@ SQLite (better-sqlite3), OpenAI, Google Gemini, ElevenLabs, Cartesia
 |---|---|
 | Public GitHub repo (MIT, built during the hackathon, uses AssemblyAI) | ✅ done — this repo |
 | Working multi-tenant SaaS + README + architecture docs | ✅ done |
-| Live end-to-end verification | ✅ done (`scripts/smoke.mjs`, 32 unit tests) |
+| Live end-to-end verification | ✅ done (`scripts/smoke.mjs`, 37 unit tests; multilingual STT verified live on a Spanish clip → `language_code: es`) |
 | Cover image (16:9) | ✅ done — `docs/cover.png` |
 | **Deploy a live demo URL (HTTPS)** | ⬜ **you** — `render.yaml` provided; set keys in the dashboard |
 | **Record the demo video (~2.5 min)** | ⬜ **you** — shot list in `docs/demo-script.md` |
@@ -81,5 +90,5 @@ SQLite (better-sqlite3), OpenAI, Google Gemini, ElevenLabs, Cartesia
 npm install
 cp .env.example .env   # add your keys
 npm start              # http://localhost:8790  (/ = demo, /dashboard = owner app)
-npm test               # 32 unit tests
+npm test               # 37 unit tests
 ```

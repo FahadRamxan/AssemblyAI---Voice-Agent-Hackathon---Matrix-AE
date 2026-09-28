@@ -49,6 +49,13 @@ Every number on that dashboard came from a call your agent actually handled — 
 - **Barge-in that actually works.** Start talking over the agent and the in-flight LLM + TTS abort
   instantly and the browser flushes queued audio — the hardest thing to get right in a voice agent, and
   now a **measured metric** (barge-in rate) on every tenant's dashboard.
+- **Multilingual live STT.** Set an agent to _Multilingual_ and AssemblyAI's
+  `universal-streaming-multilingual` model transcribes **English, Spanish, French, German, Italian and
+  Portuguese live**, detecting the spoken language on every finalized turn — the transcript tags each caller
+  turn (EN/ES/FR/DE/IT/PT) and the agent replies in that language. _(Verified live with a Spanish clip:
+  transcribed word-for-word, `language_code: es`, 0.92 confidence.)_
+- **Live latency HUD.** A small on-screen pill times each turn from speech onset to AssemblyAI's first
+  transcribed word — real telemetry you can point a camera at, not a marketing number.
 - **Confidence-aware — it knows when it mis-heard.** Raabta reads AssemblyAI's **word-level confidence**
   on every turn: uncertain words are shaded live in the transcript, and when an important value (a number,
   a name) comes through with low confidence, the agent **reads it back to confirm** instead of quietly
@@ -78,7 +85,11 @@ ready (sttLive=true, ttsRate=24000)
 PASS — STT -> LLM -> TTS round-trip works.
 ```
 
-Plus **32 hermetic unit tests** (`npm test`), including a cross-tenant isolation tripwire that fails the
+**Multilingual STT** was verified the same way — a Spanish clip synthesized at 16 kHz and streamed through a
+`universal-streaming-multilingual` session came back transcribed word-for-word (`"Hola, buenos días. Quiero
+reservar una mesa para dos personas esta noche…"`) with `language_code: "es"` at **0.92** confidence.
+
+Plus **37 hermetic unit tests** (`npm test`), including a cross-tenant isolation tripwire that fails the
 build if tenant A could ever read tenant B's data.
 
 ## Architecture
@@ -144,17 +155,19 @@ boot with WAL + foreign keys on.
 
 ```bash
 npm run typecheck   # strict TS, clean
-npm test            # 32 hermetic unit tests (no keys/network)
+npm test            # 37 hermetic unit tests (no keys/network)
 node scripts/smoke.mjs path/to/clip-16k-mono.raw   # live end-to-end (server running + keys set)
 ```
 
 ## An honest note on Arabic
 
-AssemblyAI's **streaming** model is English-first (its multilingual streaming model adds Spanish, French,
-German, Italian, Portuguese). So the **live speech-to-text** here is English. The agent's **brain and voice
-are fully bilingual** — ask it to reply in Arabic and you get natural Gulf Arabic (LLM + TTS handle it, the
-transcript renders RTL). Arabic *speech-to-text* is available today via AssemblyAI's batch API. We'd rather
-ship the true capability than fake a live Arabic demo.
+AssemblyAI's **streaming** models cover English and — via `universal-streaming-multilingual`, which we wire
+up and verify live — Spanish, French, German, Italian and Portuguese. **Arabic is not yet supported for
+streaming STT** (it's available today via AssemblyAI's batch API). So live Arabic *speech-to-text* isn't real
+here, and we don't fake it: the agent's **brain and voice are fully bilingual** — ask it to reply in Arabic
+and you get natural Gulf Arabic (LLM + TTS handle it, the transcript renders RTL). We'd rather ship the true
+capability — genuine 6-language live STT plus a bilingual brain — than stage an Arabic live demo that the STT
+layer can't actually do.
 
 ## Honest scope
 
