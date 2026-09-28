@@ -456,11 +456,98 @@ body[data-state="error"] {
   box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.15);
 }
 
+/* ---- latency HUD: live AssemblyAI time-to-first-word ---- */
+.latency-hud {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.35);
+}
+.latency-hud .lh-bolt {
+  font-size: 16px;
+  filter: drop-shadow(0 0 6px rgba(45, 212, 191, 0.6));
+}
+.latency-hud .lh-num {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.latency-hud .lh-num b {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--accent);
+  letter-spacing: -0.5px;
+}
+.latency-hud .lh-unit {
+  font-size: 11px;
+  color: var(--muted);
+}
+.latency-hud .lh-meta {
+  font-size: 9.5px;
+  line-height: 1.25;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+.latency-hud .lh-src {
+  color: var(--accent-2);
+  font-weight: 700;
+}
+.latency-hud .lh-best {
+  font-size: 10px;
+  color: var(--ok);
+  font-variant-numeric: tabular-nums;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
+.latency-hud .lh-best:empty {
+  display: none;
+}
+.latency-hud.pop {
+  animation: hud-pop 0.34s ease;
+}
+@keyframes hud-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.09);
+    border-color: var(--accent);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@media (max-width: 640px) {
+  .latency-hud {
+    top: 10px;
+    right: 10px;
+    padding: 7px 11px;
+    gap: 7px;
+  }
+  .latency-hud .lh-num b {
+    font-size: 21px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .aurora,
   .orb,
   .orb-rings span,
-  .dot.speaking {
+  .dot.speaking,
+  .latency-hud.pop {
     animation: none !important;
   }
 }

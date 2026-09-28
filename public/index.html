@@ -12,6 +12,13 @@
   </head>
   <body data-state="idle">
     <div class="aurora" aria-hidden="true"></div>
+    <!-- Latency HUD: AssemblyAI time-to-first-word, measured live (mic speech -> first partial). -->
+    <div id="latencyHud" class="latency-hud" hidden aria-live="polite" title="Time from you speaking to the first transcribed word — AssemblyAI Universal-Streaming">
+      <span class="lh-bolt">⚡</span>
+      <span class="lh-num"><b id="ttfwVal">—</b><span class="lh-unit">ms</span></span>
+      <span class="lh-meta">first word<br /><span class="lh-src">AssemblyAI</span></span>
+      <span id="ttfwBest" class="lh-best"></span>
+    </div>
     <div class="app">
       <header class="topbar">
         <div class="brand">

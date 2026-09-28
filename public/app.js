@@ -42,6 +42,9 @@ const els = {
   textForm: document.getElementById("textForm"),
   textInput: document.getElementById("textInput"),
   orb: document.getElementById("orb"),
+  hud: document.getElementById("latencyHud"),
+  ttfwVal: document.getElementById("ttfwVal"),
+  ttfwBest: document.getElementById("ttfwBest"),
 };
 
 let ws = null;
@@ -51,6 +54,30 @@ let micStream = null;
 let micLive = false; // gate frames until the server says "ready"
 let preroll = []; // frames captured before ready — flushed so the first word isn't lost
 let currentAgentBubble = null;
+
+// --- latency HUD: AssemblyAI time-to-first-word (mic speech-start -> first partial) ---
+const SPEECH_RMS = 0.02; // mic level that counts as "the caller started speaking"
+let speechStartAt = 0; // performance.now() when the current turn's speech began (0 = not yet)
+let ttfwMeasured = false; // one measurement per turn
+let bestTtfw = Infinity;
+
+function showTtfw(ms) {
+  if (!els.hud || !els.ttfwVal) return;
+  els.hud.hidden = false;
+  els.ttfwVal.textContent = String(ms);
+  if (ms < bestTtfw) {
+    bestTtfw = ms;
+    if (els.ttfwBest) els.ttfwBest.textContent = `best ${ms}`;
+  }
+  els.hud.classList.remove("pop");
+  void els.hud.offsetWidth; // restart the pop animation
+  els.hud.classList.add("pop");
+}
+
+function resetTurnLatency() {
+  speechStartAt = 0;
+  ttfwMeasured = false;
+}
 
 const isArabic = (t) => (t.match(/[؀-ۿ]/g) || []).length > (t.match(/[A-Za-z]/g) || []).length;
 const LOWCONF = 0.55; // words below this are shaded (mirrors the server's confidence threshold)
@@ -149,17 +176,24 @@ function handleServerMessage(raw) {
       micLive = true;
       for (const f of preroll) ws?.send(f);
       preroll = [];
+      resetTurnLatency();
       setStatus("listening", m.sttLive ? "listening" : "type to chat");
       els.hint.hidden = true;
       break;
     case "partial":
       setStatus("listening", "listening");
+      // First transcribed word of this turn -> AssemblyAI time-to-first-word.
+      if (speechStartAt && !ttfwMeasured) {
+        ttfwMeasured = true;
+        showTtfw(Math.round(performance.now() - speechStartAt));
+      }
       setInterim(m.text, m.words);
       break;
     case "final":
       setInterim("");
       addBubble("caller", m.text, m.words, m.confidence, m.language);
       currentAgentBubble = null; // next agent text starts a fresh bubble
+      resetTurnLatency(); // next utterance measures a fresh time-to-first-word
       break;
     case "agent":
       appendAgent(m.text);
@@ -287,6 +321,8 @@ function onMicFrame(buf) {
   const rms = Math.sqrt(sum / pcm.length) / 32768;
   els.meterFill.style.width = Math.min(100, rms * 320) + "%";
   document.documentElement.style.setProperty("--level", Math.min(0.5, rms * 3).toFixed(3)); // orb reacts to voice
+  // Mark when the caller starts talking — the clock for AssemblyAI's time-to-first-word.
+  if (micLive && rms > SPEECH_RMS && speechStartAt === 0) speechStartAt = performance.now();
   // uplink (buffer until the session is ready)
   if (micLive && ws && ws.readyState === WebSocket.OPEN) ws.send(buf);
   else if (!micLive) preroll.push(buf);
@@ -317,6 +353,7 @@ function endCall() {
     /* ignore */
   }
   micLive = false;
+  resetTurnLatency();
   flushPlayback();
   workletNode?.disconnect();
   micStream?.getTracks().forEach((t) => t.stop());
