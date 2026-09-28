@@ -61,7 +61,14 @@ test("interpretSttMessage: partial vs formatted final", () => {
     JSON.stringify({ type: "Turn", transcript: "Book a table.", end_of_turn: true, turn_is_formatted: true }),
     true,
   );
-  assert.deepEqual(finalFormatted, { kind: "final", text: "Book a table.", words: [], endOfTurnConfidence: undefined });
+  assert.deepEqual(finalFormatted, {
+    kind: "final",
+    text: "Book a table.",
+    words: [],
+    endOfTurnConfidence: undefined,
+    languageCode: undefined,
+    languageConfidence: undefined,
+  });
 });
 
 test("interpretSttMessage: the UNFORMATTED final is ignored when formatting is on (no double turn)", () => {
@@ -77,7 +84,14 @@ test("interpretSttMessage: with formatting off, the plain end_of_turn is the fin
     JSON.stringify({ type: "Turn", transcript: "book a table", end_of_turn: true, turn_is_formatted: false }),
     false,
   );
-  assert.deepEqual(final, { kind: "final", text: "book a table", words: [], endOfTurnConfidence: undefined });
+  assert.deepEqual(final, {
+    kind: "final",
+    text: "book a table",
+    words: [],
+    endOfTurnConfidence: undefined,
+    languageCode: undefined,
+    languageConfidence: undefined,
+  });
 
   // a Turn with word-level confidence is parsed through to the final
   const withWords = interpretSttMessage(
@@ -101,6 +115,25 @@ test("interpretSttMessage: with formatting off, the plain end_of_turn is the fin
     assert.equal(withWords.words.length, 4);
     assert.equal(withWords.words[3]?.confidence, 0.42);
     assert.equal(withWords.endOfTurnConfidence, 0.9);
+  }
+});
+
+test("interpretSttMessage: multilingual streaming carries the detected language on the final", () => {
+  const es = interpretSttMessage(
+    JSON.stringify({
+      type: "Turn",
+      transcript: "Quiero reservar una mesa.",
+      end_of_turn: true,
+      turn_is_formatted: true,
+      language_code: "es",
+      language_confidence: 0.97,
+    }),
+    true,
+  );
+  assert.equal(es.kind, "final");
+  if (es.kind === "final") {
+    assert.equal(es.languageCode, "es");
+    assert.equal(es.languageConfidence, 0.97);
   }
 });
 

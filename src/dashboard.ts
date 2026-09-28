@@ -21,7 +21,8 @@ import { requireOwner } from "./auth.js";
 import { computeAnalytics } from "./analytics.js";
 import { json, readJson, str, optStr, strArray } from "./http.js";
 
-const LANGS = new Set(["auto", "en", "ar"]);
+// "multi" opts the agent into AssemblyAI's multilingual streaming model (live EN/ES/FR/DE/IT/PT).
+const LANGS = new Set(["auto", "en", "ar", "multi"]);
 
 export async function handleDashboard(req: IncomingMessage, res: ServerResponse, db: Db): Promise<void> {
   const principal = requireOwner(db, req.headers);

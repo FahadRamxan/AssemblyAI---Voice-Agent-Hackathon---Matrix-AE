@@ -55,6 +55,10 @@ let currentAgentBubble = null;
 const isArabic = (t) => (t.match(/[؀-ۿ]/g) || []).length > (t.match(/[A-Za-z]/g) || []).length;
 const LOWCONF = 0.55; // words below this are shaded (mirrors the server's confidence threshold)
 
+// AssemblyAI multilingual streaming detects one of these per finalized turn.
+const LANG_LABELS = { en: "EN", es: "ES", fr: "FR", de: "DE", it: "IT", pt: "PT" };
+const langLabel = (code) => LANG_LABELS[code] || (code ? code.toUpperCase().slice(0, 2) : "");
+
 // Render text as confidence-shaded word spans (from AssemblyAI's word-level confidence).
 function fillWords(el, text, words) {
   el.textContent = "";
@@ -74,12 +78,20 @@ function fillWords(el, text, words) {
 // --------------------------------------------------------------------------
 // transcript rendering
 // --------------------------------------------------------------------------
-function addBubble(role, text, words, confidence) {
+function addBubble(role, text, words, confidence, language) {
   const el = document.createElement("div");
   el.className = `bubble ${role}${isArabic(text) ? " rtl" : ""}`;
   const who = document.createElement("span");
   who.className = "who";
   who.textContent = role === "caller" ? "You" : "Raabta";
+  // Detected-language tag (caller turns only) — from AssemblyAI multilingual streaming.
+  if (role === "caller" && language) {
+    const l = document.createElement("span");
+    l.className = "lang";
+    l.textContent = langLabel(language);
+    l.title = `AssemblyAI detected ${langLabel(language)}`;
+    who.appendChild(l);
+  }
   // Per-turn confidence badge (caller turns only) — from AssemblyAI.
   if (role === "caller" && typeof confidence === "number") {
     const c = document.createElement("span");
@@ -146,7 +158,7 @@ function handleServerMessage(raw) {
       break;
     case "final":
       setInterim("");
-      addBubble("caller", m.text, m.words, m.confidence);
+      addBubble("caller", m.text, m.words, m.confidence, m.language);
       currentAgentBubble = null; // next agent text starts a fresh bubble
       break;
     case "agent":

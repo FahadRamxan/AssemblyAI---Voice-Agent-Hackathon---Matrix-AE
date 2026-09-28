@@ -195,7 +195,14 @@ function renderAgentCard(list, ag, isNew) {
     <div class="row">
       <div class="grow"><label>Name</label><input class="f-name" value="${esc(ag?.name || "")}" placeholder="Front desk" /></div>
       <div><label>Language</label><select class="f-lang">
-        ${["auto", "en", "ar"].map((l) => `<option value="${l}" ${l === lang ? "selected" : ""}>${l}</option>`).join("")}
+        ${[
+          ["auto", "auto (English STT)"],
+          ["en", "English"],
+          ["ar", "Arabic (brain + voice)"],
+          ["multi", "Multilingual live (EN/ES/FR/DE/IT/PT)"],
+        ]
+          .map(([v, t]) => `<option value="${v}" ${v === lang ? "selected" : ""}>${t}</option>`)
+          .join("")}
       </select></div>
       <div><label>Active</label><select class="f-active">
         <option value="1" ${ag?.isActive !== false ? "selected" : ""}>yes</option>
