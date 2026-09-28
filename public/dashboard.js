@@ -101,13 +101,15 @@ let activeTab = "home";
 function showApp() {
   $("#auth").classList.add("hidden");
   $("#app").classList.remove("hidden");
-  $("#who").textContent = `${me.user.email}\n${me.tenant.name}`;
+  const name = me.tenant.name || "Workspace";
+  $("#who").innerHTML = `
+    <div class="avatar" aria-hidden="true">${esc((name[0] || "R").toUpperCase())}</div>
+    <div class="who-meta">
+      <div class="who-name">${esc(name)}</div>
+      <div class="who-email">${esc(me.user.email)}</div>
+    </div>`;
   for (const b of document.querySelectorAll("#nav button")) {
-    b.onclick = () => {
-      activeTab = b.dataset.tab;
-      for (const x of document.querySelectorAll("#nav button")) x.classList.toggle("active", x === b);
-      renderTab();
-    };
+    b.onclick = () => goTab(b.dataset.tab);
   }
   $("#logoutBtn").onclick = async () => {
     await api("POST", "/api/auth/logout");
@@ -117,56 +119,142 @@ function showApp() {
   renderTab();
 }
 
+function goTab(tab) {
+  activeTab = tab;
+  for (const x of document.querySelectorAll("#nav button")) x.classList.toggle("active", x.dataset.tab === tab);
+  renderTab();
+}
+
 function renderTab() {
   const v = $("#view");
-  v.innerHTML = `<div class="muted">Loading…</div>`;
+  v.innerHTML = `<div class="loading"><span class="spinner"></span> Loading…</div>`;
+  v.classList.remove("view-in");
+  void v.offsetWidth; // restart the fade-in
+  v.classList.add("view-in");
   ({ home: tabHome, agents: tabAgents, keys: tabKeys, calls: tabCalls, talk: tabTalk })[activeTab](v);
+}
+
+/** A reusable empty-state block (icon + message + optional CTA). */
+function emptyState(icon, title, sub, ctaLabel, ctaTab) {
+  const cta = ctaLabel ? `<button class="btn sm" data-empty-cta="${ctaTab}">${esc(ctaLabel)}</button>` : "";
+  return `<div class="empty"><div class="empty-ic">${icon}</div><div class="empty-title">${esc(title)}</div><p class="empty-sub">${esc(sub)}</p>${cta}</div>`;
+}
+function wireEmptyCtas(root) {
+  for (const b of root.querySelectorAll("[data-empty-cta]")) b.onclick = () => goTab(b.dataset.emptyCta);
 }
 
 // --------------------------------------------------------------------------
 // Overview
 // --------------------------------------------------------------------------
-async function tabHome(v) {
-  const { data: a } = await api("GET", "/api/dashboard/analytics");
-  const dur = a.avgDurationMs ? (a.avgDurationMs / 1000).toFixed(1) + "s" : "—";
-  const tile = (k, val, accent) => `<div class="tile"><div class="k">${k}</div><div class="v ${accent ? "accent" : ""}">${val}</div></div>`;
-  const ls = a.languageSplit || { en: 0, ar: 0, unknown: 0 };
-  const lsTotal = Math.max(1, ls.en + ls.ar + ls.unknown);
-  v.innerHTML = `
-    <h2 class="view-title">Overview</h2>
-    <p class="view-sub">Live metrics from calls your agents actually handled.</p>
-    <div class="tiles">
-      ${tile("Total calls", a.totalCalls)}
-      ${tile("Calls · last 7 days", a.callsLast7Days)}
-      ${tile("Avg duration", dur)}
-      ${tile("Avg turns / call", a.avgTurnsPerCall)}
-      ${tile("Barge-in rate", a.bargeInRate, true)}
-      ${tile("Reply latency p50", a.latencyMsP50 != null ? a.latencyMsP50 + "ms" : "—")}
-      ${tile("Reply latency p95", a.latencyMsP95 != null ? a.latencyMsP95 + "ms" : "—")}
-    </div>
-    <div class="panel">
-      <h3>Calls · last 14 days</h3>
-      ${sparkline(a.callsPerDay || [])}
-    </div>
-    <div class="panel">
-      <h3>Language split</h3>
-      <div class="bar">
-        <span style="width:${(ls.en / lsTotal) * 100}%;background:var(--accent)"></span>
-        <span style="width:${(ls.ar / lsTotal) * 100}%;background:var(--accent2)"></span>
-        <span style="width:${(ls.unknown / lsTotal) * 100}%;background:rgba(255,255,255,.12)"></span>
-      </div>
-      <p class="muted mt">English ${ls.en} · Arabic ${ls.ar} · Unknown ${ls.unknown}</p>
-    </div>`;
+const ICONS = {
+  calls: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.4-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>`,
+  week: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>`,
+  clock: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`,
+  turns: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+  bolt: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg>`,
+  gauge: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14a2 2 0 1 0 2-2"/><path d="M3.3 18a10 10 0 1 1 17.4 0"/><path d="M14 12l3-3"/></svg>`,
+};
+
+function kpiTile(k, val, icon, opts = {}) {
+  return `<div class="tile ${opts.accent ? "accent" : ""}">
+    <div class="tile-top"><span class="tile-ic">${icon}</span><span class="k">${k}</span></div>
+    <div class="v">${val}</div>
+    ${opts.hint ? `<div class="tile-hint">${esc(opts.hint)}</div>` : ""}
+  </div>`;
 }
 
-function sparkline(days) {
-  if (!days.length) return `<p class="muted">No calls yet.</p>`;
+async function tabHome(v) {
+  const [{ data: a }, { data: ad }, { data: kd }] = await Promise.all([
+    api("GET", "/api/dashboard/analytics"),
+    api("GET", "/api/dashboard/agents"),
+    api("GET", "/api/dashboard/keys"),
+  ]);
+  const agents = ad?.agents || [];
+  const keys = kd?.keys || [];
+  const hasKey = keys.some((k) => k.active);
+  const dur = a.avgDurationMs ? (a.avgDurationMs / 1000).toFixed(1) + "s" : "—";
+  const ls = a.languageSplit || { en: 0, ar: 0, unknown: 0 };
+  const lsTotal = Math.max(1, ls.en + ls.ar + ls.unknown);
+
+  const steps = [
+    { done: agents.length > 0, label: "Create your first agent", tab: "agents" },
+    { done: hasKey, label: "Get your embed key + snippet", tab: "keys" },
+    { done: (a.totalCalls || 0) > 0, label: "Make your first call", tab: "talk" },
+  ];
+  const remaining = steps.filter((s) => !s.done).length;
+  const checklist = remaining
+    ? `<div class="panel setup">
+        <div class="panel-head"><h3>🚀 Get started</h3><span class="setup-count">${steps.length - remaining}/${steps.length} complete</span></div>
+        <div class="steps">${steps
+          .map(
+            (s) => `<div class="step ${s.done ? "done" : ""}">
+              <span class="tick">${s.done ? "✓" : ""}</span>
+              <span class="step-label">${esc(s.label)}</span>
+              ${s.done ? `<span class="step-status">Done</span>` : `<button class="btn sm ghost" data-empty-cta="${s.tab}">Go →</button>`}
+            </div>`,
+          )
+          .join("")}</div>
+      </div>`
+    : "";
+
+  v.innerHTML = `
+    <div class="view-head">
+      <div><h2 class="view-title">Overview</h2><p class="view-sub">Live metrics from calls your agents actually handled — nothing seeded.</p></div>
+      <button class="btn" data-empty-cta="talk">Talk to your agent</button>
+    </div>
+    ${checklist}
+    <div class="tiles">
+      ${kpiTile("Total calls", a.totalCalls || 0, ICONS.calls)}
+      ${kpiTile("Calls · last 7 days", a.callsLast7Days || 0, ICONS.week)}
+      ${kpiTile("Avg duration", dur, ICONS.clock)}
+      ${kpiTile("Avg turns / call", a.avgTurnsPerCall || 0, ICONS.turns)}
+      ${kpiTile("Barge-in rate", a.bargeInRate || 0, ICONS.bolt, { accent: true, hint: "callers who interrupted" })}
+      ${kpiTile("Reply latency p50", a.latencyMsP50 != null ? a.latencyMsP50 + "ms" : "—", ICONS.gauge, { hint: a.latencyMsP95 != null ? "p95 " + a.latencyMsP95 + "ms" : "" })}
+    </div>
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-head"><h3>Calls · last 14 days</h3></div>
+        ${areaChart(a.callsPerDay || [])}
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>Language split</h3></div>
+        <div class="bar">
+          <span style="width:${(ls.en / lsTotal) * 100}%;background:var(--accent)"></span>
+          <span style="width:${(ls.ar / lsTotal) * 100}%;background:var(--accent2)"></span>
+          <span style="width:${(ls.unknown / lsTotal) * 100}%;background:rgba(255,255,255,.12)"></span>
+        </div>
+        <div class="legend">
+          <span class="lg"><i style="background:var(--accent)"></i>English ${ls.en}</span>
+          <span class="lg"><i style="background:var(--accent2)"></i>Arabic ${ls.ar}</span>
+          <span class="lg"><i style="background:rgba(255,255,255,.18)"></i>Other ${ls.unknown}</span>
+        </div>
+      </div>
+    </div>`;
+  wireEmptyCtas(v);
+}
+
+function areaChart(days) {
+  if (!days.length) return `<p class="muted">No calls yet — your first call will show up here.</p>`;
   const max = Math.max(1, ...days.map((d) => d.calls));
-  const w = 100, h = 60, step = w / Math.max(1, days.length - 1);
-  const pts = days.map((d, i) => `${(i * step).toFixed(1)},${(h - (d.calls / max) * (h - 6) - 3).toFixed(1)}`).join(" ");
-  return `<svg class="sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-    <polyline fill="none" stroke="var(--accent)" stroke-width="1.5" points="${pts}" />
-  </svg><p class="muted">${days.reduce((s, d) => s + d.calls, 0)} calls across the window · peak ${max}/day</p>`;
+  const w = 300, h = 80, pad = 3;
+  const step = w / Math.max(1, days.length - 1);
+  const y = (c) => (h - pad - (c / max) * (h - pad * 2)).toFixed(1);
+  const pts = days.map((d, i) => `${(i * step).toFixed(1)},${y(d.calls)}`);
+  const line = pts.join(" ");
+  const area = `0,${h} ${line} ${w},${h}`;
+  const last = days[days.length - 1];
+  const lx = ((days.length - 1) * step).toFixed(1);
+  const total = days.reduce((s, d) => s + d.calls, 0);
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+      <defs><linearGradient id="areaFill" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.35"/>
+        <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+      </linearGradient></defs>
+      <polygon fill="url(#areaFill)" points="${area}"/>
+      <polyline fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" points="${line}"/>
+      <circle cx="${lx}" cy="${y(last.calls)}" r="3" fill="var(--accent)"/>
+    </svg>
+    <p class="muted chart-cap">${total} call${total === 1 ? "" : "s"} across the window · peak ${max}/day</p>`;
 }
 
 // --------------------------------------------------------------------------
@@ -324,25 +412,31 @@ async function tabKeys(v) {
 async function tabCalls(v) {
   const { data } = await api("GET", "/api/dashboard/calls");
   const calls = data.calls || [];
+  if (!calls.length) {
+    v.innerHTML = `
+      <h2 class="view-title">Calls</h2>
+      <p class="view-sub">Every conversation your agents handled — click one to read the transcript.</p>
+      ${emptyState(ICONS.calls, "No calls yet", "Open the “Talk to your agent” tab and say hello — your call will appear here with its full transcript.", "Talk to your agent", "talk")}`;
+    wireEmptyCtas(v);
+    return;
+  }
   v.innerHTML = `
     <h2 class="view-title">Calls</h2>
     <p class="view-sub">Every conversation your agents handled — click one to read the transcript.</p>
-    <div class="panel">
+    <div class="panel table-panel">
       <table><thead><tr><th>Started</th><th>Duration</th><th>Turns</th><th>Barge-ins</th><th>Lang</th><th>Status</th></tr></thead>
-      <tbody>${
-        calls
-          .map(
-            (c) => `<tr data-call="${c.id}">
+      <tbody>${calls
+        .map(
+          (c) => `<tr data-call="${c.id}">
         <td>${new Date(c.started_at).toLocaleString()}</td>
         <td>${c.duration_ms != null ? (c.duration_ms / 1000).toFixed(1) + "s" : "—"}</td>
         <td>${c.turn_count}</td>
-        <td>${c.barge_in_count}</td>
-        <td>${c.language_primary || "—"}</td>
-        <td><span class="pill neutral">${c.status}</span></td>
+        <td>${c.barge_in_count > 0 ? `<span class="pill accent">${c.barge_in_count}</span>` : "0"}</td>
+        <td><span class="tag">${esc(c.language_primary || "—")}</span></td>
+        <td><span class="pill neutral">${esc(c.status)}</span></td>
       </tr>`,
-          )
-          .join("") || `<tr><td colspan="6" class="muted">No calls yet. Open the “Talk to your agent” tab to make one.</td></tr>`
-      }</tbody></table>
+        )
+        .join("")}</tbody></table>
     </div>
     <div id="callDetail"></div>`;
   for (const tr of v.querySelectorAll("[data-call]")) {
@@ -370,12 +464,15 @@ async function tabTalk(v) {
   const { data } = await api("GET", "/api/dashboard/keys");
   const key = (data.keys || []).find((k) => k.active);
   if (!key) {
-    v.innerHTML = `<h2 class="view-title">Talk to your agent</h2><p class="view-sub">Create an active embed key first (Embed &amp; keys tab).</p>`;
+    v.innerHTML = `<h2 class="view-title">Talk to your agent</h2>
+      <p class="view-sub">This is exactly what your visitors get — click Start and talk.</p>
+      ${emptyState(ICONS.calls, "No active key yet", "Create an embed key so the widget can start a voice session for your agent.", "Go to Embed & keys", "keys")}`;
+    wireEmptyCtas(v);
     return;
   }
   v.innerHTML = `
     <h2 class="view-title">Talk to your agent</h2>
-    <p class="view-sub">This is exactly what your visitors get — click Start and talk. Try interrupting it.</p>
+    <p class="view-sub">This is exactly what your visitors get — click Start and talk. Try interrupting it mid-sentence, or switch to Spanish/French.</p>
     <iframe class="talk" allow="microphone" src="/widget?key=${encodeURIComponent(key.publicKey)}"></iframe>`;
 }
 
