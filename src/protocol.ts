@@ -13,11 +13,17 @@ export const MIC_SAMPLE_RATE = 16000; // what we send to AssemblyAI
 export const TTS_SAMPLE_RATE = 24000; // what TTS returns / the browser plays
 export const MIC_FRAME_MS = 50; // ~50ms per mic frame (AssemblyAI sweet spot)
 
+/** A recognized word with AssemblyAI's confidence (0..1) — drives the shaded transcript. */
+export interface TranscriptWord {
+  text: string;
+  confidence: number;
+}
+
 /** server -> client */
 export type ServerMessage =
   | { type: "ready"; micSampleRate: number; ttsSampleRate: number; sttLive: boolean }
-  | { type: "partial"; text: string } // interim transcript (overwrite the live caption)
-  | { type: "final"; text: string } // finalized caller turn
+  | { type: "partial"; text: string; words?: TranscriptWord[] } // interim transcript (overwrite the live caption)
+  | { type: "final"; text: string; words?: TranscriptWord[]; confidence?: number } // finalized caller turn
   | { type: "agent"; text: string } // a sentence the agent is about to speak
   | { type: "tts_start" }
   | { type: "tts_stop"; reason?: "barge_in" | "done" }

@@ -16,13 +16,26 @@
 import WebSocket from "ws";
 import { log } from "../logger.js";
 
+/** One recognized word with AssemblyAI's confidence (0..1). */
+export interface SttWord {
+  text: string;
+  confidence: number;
+}
+
+/** Metadata AssemblyAI attaches to a finalized turn. */
+export interface SttMeta {
+  words: SttWord[];
+  /** AssemblyAI's end_of_turn_confidence (0..1), if present. */
+  endOfTurnConfidence?: number;
+}
+
 export interface SttEvents {
   /** Session is live (AssemblyAI "Begin" received). */
   onReady?: (sessionId: string) => void;
   /** Interim transcript for the current turn (not yet finalized). */
-  onPartial?: (text: string) => void;
+  onPartial?: (text: string, words?: SttWord[]) => void;
   /** A finalized turn — the caller has stopped speaking. */
-  onFinal?: (text: string) => void;
+  onFinal?: (text: string, meta?: SttMeta) => void;
   onError?: (err: Error) => void;
   onClose?: () => void;
 }
@@ -41,10 +54,24 @@ const ENDPOINT = "wss://streaming.assemblyai.com/v3/ws";
 
 export type SttInterpretation =
   | { kind: "ready"; id: string }
-  | { kind: "partial"; text: string }
-  | { kind: "final"; text: string }
+  | { kind: "partial"; text: string; words: SttWord[] }
+  | { kind: "final"; text: string; words: SttWord[]; endOfTurnConfidence?: number }
   | { kind: "termination" }
   | { kind: "ignore" };
+
+/** Parse the per-word confidence array from a Turn message. */
+function parseWords(raw: unknown): SttWord[] {
+  if (!Array.isArray(raw)) return [];
+  const out: SttWord[] = [];
+  for (const w of raw) {
+    if (!w || typeof w !== "object") continue;
+    const rec = w as Record<string, unknown>;
+    const text = String(rec.text ?? "").trim();
+    if (!text) continue;
+    out.push({ text, confidence: typeof rec.confidence === "number" ? rec.confidence : 1 });
+  }
+  return out;
+}
 
 /**
  * Pure interpreter for an AssemblyAI v3 inbound message. Kept separate from
@@ -64,10 +91,13 @@ export function interpretSttMessage(raw: string, requireFormatted: boolean): Stt
     case "Turn": {
       const text = String(msg.transcript ?? "").trim();
       if (!text) return { kind: "ignore" };
+      const words = parseWords(msg.words);
       const endOfTurn = msg.end_of_turn === true;
       const formatted = msg.turn_is_formatted === true;
-      if (endOfTurn && (!requireFormatted || formatted)) return { kind: "final", text };
-      if (!endOfTurn) return { kind: "partial", text };
+      const eotConf = typeof msg.end_of_turn_confidence === "number" ? msg.end_of_turn_confidence : undefined;
+      if (endOfTurn && (!requireFormatted || formatted))
+        return { kind: "final", text, words, endOfTurnConfidence: eotConf };
+      if (!endOfTurn) return { kind: "partial", text, words };
       return { kind: "ignore" }; // unformatted end_of_turn — wait for the formatted one
     }
     case "Termination":
@@ -139,12 +169,15 @@ export class AssemblyAiStt {
         break;
       case "final":
         this.lastPartial = "";
-        this.events.onFinal?.(result.text);
+        this.events.onFinal?.(result.text, {
+          words: result.words,
+          endOfTurnConfidence: result.endOfTurnConfidence,
+        });
         break;
       case "partial":
         if (result.text !== this.lastPartial) {
           this.lastPartial = result.text;
-          this.events.onPartial?.(result.text);
+          this.events.onPartial?.(result.text, result.words);
         }
         break;
       case "termination":
