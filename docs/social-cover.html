@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1600px; height: 900px; overflow: hidden; }
+      body {
+        background: #070b12;
+        font-family: "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+        color: #eaf1fa;
+        position: relative;
+        -webkit-font-smoothing: antialiased;
+      }
+      .glow { position: absolute; border-radius: 50%; filter: blur(130px); }
+      .glow.teal { width: 760px; height: 760px; background: #2dd4bf; right: 120px; top: 40px; opacity: 0.20; }
+      .glow.indigo { width: 680px; height: 680px; background: #6366f1; right: 340px; top: 360px; opacity: 0.18; }
+      .wrap { position: absolute; inset: 0; display: flex; align-items: center; }
+      .left { padding-left: 120px; width: 900px; }
+      .eyebrow {
+        font-size: 22px; letter-spacing: 6px; text-transform: uppercase;
+        color: #2dd4bf; font-weight: 600; margin-bottom: 30px;
+      }
+      .title { font-size: 128px; font-weight: 800; letter-spacing: -3px; line-height: 0.98; }
+      .title .live { color: #2dd4bf; }
+      .tag { font-size: 37px; line-height: 1.36; color: #c1cad6; margin-top: 36px; font-weight: 400; }
+      .tag b { color: #eaf1fa; font-weight: 600; }
+      .chips { display: flex; gap: 16px; margin-top: 50px; }
+      .chip {
+        font-size: 24px; padding: 15px 28px; border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.15); color: #dbe4ee; background: rgba(255, 255, 255, 0.04);
+        display: flex; align-items: center; gap: 12px;
+      }
+      .chip .dot { width: 10px; height: 10px; border-radius: 50%; background: linear-gradient(135deg, #2dd4bf, #6366f1); }
+      .foot { position: absolute; left: 120px; bottom: 66px; font-size: 25px; color: #8a95a3; }
+      .foot b { color: #2dd4bf; font-weight: 600; }
+      .mark { position: absolute; right: 96px; top: 50%; transform: translateY(-50%); width: 520px; height: 520px; }
+    </style>
+  </head>
+  <body>
+    <div class="glow teal"></div>
+    <div class="glow indigo"></div>
+
+    <svg class="mark" viewBox="0 0 520 520" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#2dd4bf" />
+          <stop offset="1" stop-color="#6366f1" />
+        </linearGradient>
+      </defs>
+      <g fill="none" stroke="url(#g)" stroke-linecap="round">
+        <circle cx="260" cy="260" r="250" stroke-width="2" opacity="0.10" />
+        <circle cx="260" cy="260" r="196" stroke-width="3" opacity="0.20" />
+        <circle cx="260" cy="260" r="142" stroke-width="4" opacity="0.38" />
+        <circle cx="260" cy="260" r="90" stroke-width="6" opacity="0.66" />
+      </g>
+      <circle cx="260" cy="260" r="42" fill="url(#g)" />
+    </svg>
+
+    <div class="wrap">
+      <div class="left">
+        <div class="eyebrow">Voice AI &middot; AssemblyAI Hackathon</div>
+        <div class="title">Raabta <span class="live">Live</span></div>
+        <div class="tag">Real-time voice agents you can <b>talk over</b> —<br />embeddable in <b>one line of code</b>.</div>
+        <div class="chips">
+          <div class="chip"><span class="dot"></span>Sub-second STT</div>
+          <div class="chip"><span class="dot"></span>True barge-in</div>
+          <div class="chip"><span class="dot"></span>Multilingual</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="foot">Powered by <b>AssemblyAI Universal-Streaming</b> &middot; TypeScript &middot; one Node process</div>
+  </body>
+</html>
