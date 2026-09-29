@@ -143,10 +143,22 @@ export class VoiceSession {
     if (greeting) {
       this.convo.addAssistant(greeting);
       this.ctx.recorder?.agentReply(greeting, detectLang(greeting), 0); // seq 0, latency null
-      void this.speak(greeting, ++this.turnSeq);
+      const seq = ++this.turnSeq;
+      // The greeting bypasses handleTurn, so mirror its finally: clear ttsActive when the
+      // greeting finishes. Otherwise ttsActive stays latched true forever — the idle timer
+      // would re-arm indefinitely and never fire, and the caller's first word would spuriously
+      // barge-in over an utterance that already ended. Guarded by seq so a barge-in during the
+      // greeting (which already cleared ttsActive) doesn't double-fire tts_stop.
+      void this.speak(greeting, seq).finally(() => {
+        if (seq === this.turnSeq && this.ttsActive) {
+          this.ttsActive = false;
+          this.send({ type: "tts_stop", reason: "done" });
+        }
+        this.resetIdleTimer(); // agent went quiet — start the silence window
+      });
     }
 
-    // Begin the silence countdown (speak() above will have already reset it if there's a greeting).
+    // Begin the silence countdown (the greeting's finally re-arms it once the greeting ends).
     this.resetIdleTimer();
   }
 

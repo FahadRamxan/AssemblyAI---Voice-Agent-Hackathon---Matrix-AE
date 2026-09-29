@@ -127,3 +127,39 @@ test("no further idle fire after the session is closed", async () => {
   await delay(90);
   assert.equal(ws.messages("ended").length, 0, "a closed session never fires idle");
 });
+
+test("a greeting does NOT latch ttsActive → idle still fires after the agent greets", async () => {
+  // Regression: the greeting is spoken via speak() (not handleTurn), which sets ttsActive=true.
+  // If it's never cleared, onIdle re-arms forever and the timer never fires — the exact scenario
+  // (voice agent + greeting + a silent caller) this feature exists for. Mock fetch so the TTS
+  // synth settles instantly + offline, then assert idle still fires.
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    throw new Error("offline (test)");
+  }) as typeof fetch;
+  try {
+    const ws = new FakeWs();
+    const { recorder, calls } = fakeRecorder();
+    const ctx: SessionContext = {
+      resolved: { ...agent, greeting: "Thanks for calling — how can I help?" },
+      platform: {
+        assemblyAiKey: "", // no STT socket
+        llm: null,
+        tts: { provider: "elevenlabs", apiKey: "x", voiceId: "v", model: "m" }, // makes speak() set ttsActive
+      },
+      callId: "call-greet",
+      sessionMaxMs: 60_000,
+      idleTimeoutMs: 40,
+      recorder,
+    };
+    const session = new VoiceSession(ws as never, ctx);
+    session.start(); // greets -> ttsActive=true -> synth throws (caught) -> finally clears ttsActive
+    await delay(140); // let the greeting synth settle, then exceed the idle window
+    const ended = ws.messages("ended") as { reason: string }[];
+    assert.equal(ended.length, 1, "idle fires even after a greeting (ttsActive was not latched)");
+    assert.equal(ended[0].reason, "idle");
+    assert.equal(calls.finalizeReason, "idle");
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});

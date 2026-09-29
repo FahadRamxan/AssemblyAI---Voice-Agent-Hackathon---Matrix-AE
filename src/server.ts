@@ -267,8 +267,18 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse, deps: HttpD
     const ac = new AbortController();
     req.on("close", () => ac.abort()); // stop synthesis (+ provider spend) if the client leaves
     try {
-      res.writeHead(200, { "content-type": "audio/pcm; rate=24000", "cache-control": "no-store" });
-      for await (const chunk of synthesize({ ...cfg.tts, voiceId }, text, lang, ac.signal)) res.write(chunk);
+      // Write the 200 headers only once the FIRST chunk arrives. synthesize() is lazy — a bad
+      // voice id throws on the first pull — so writing 200 up front would strand the error as an
+      // empty 200 ("No audio returned") instead of a clean 502 tts_failed.
+      let started = false;
+      for await (const chunk of synthesize({ ...cfg.tts, voiceId }, text, lang, ac.signal)) {
+        if (!started) {
+          started = true;
+          res.writeHead(200, { "content-type": "audio/pcm; rate=24000", "cache-control": "no-store" });
+        }
+        res.write(chunk);
+      }
+      if (!started) return json(res, 502, { error: "tts_failed" }); // no audio produced
       res.end();
     } catch (err) {
       log.warn("voice preview failed", { err: String(err) });

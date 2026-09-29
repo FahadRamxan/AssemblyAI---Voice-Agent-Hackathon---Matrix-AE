@@ -351,25 +351,46 @@ function openSocket() {
     else onTtsAudio(ev.data);
   };
   ws.onclose = () => {
-    setStatus("idle", "idle");
     micLive = false;
+    endCall(); // abnormal close (server hang-up, refused upgrade, network drop) -> tear down the mic
   };
   ws.onerror = () => setStatus("error", "connection error");
 }
 
+// Idempotent: reachable from the Hang-up click, the server "ended" message, AND ws.onclose,
+// so it must survive being called more than once for a single shutdown (it nulls the resources
+// it tears down, so a second call is a no-op).
 function endCall() {
-  try {
-    ws?.send(JSON.stringify({ type: "stop" }));
-  } catch {
-    /* ignore */
-  }
   micLive = false;
   resetTurnLatency();
   flushPlayback();
-  workletNode?.disconnect();
-  micStream?.getTracks().forEach((t) => t.stop());
-  audioCtx?.close();
-  ws?.close();
+  try {
+    ws?.send(JSON.stringify({ type: "stop" }));
+  } catch {
+    /* socket already closing/closed */
+  }
+  try {
+    workletNode?.disconnect();
+  } catch {
+    /* already disconnected */
+  }
+  workletNode = null;
+  try {
+    micStream?.getTracks().forEach((t) => t.stop());
+  } catch {
+    /* already stopped */
+  }
+  micStream = null;
+  if (audioCtx) {
+    const ctx = audioCtx;
+    audioCtx = null;
+    ctx.close().catch(() => {}); // rejects if already closed — ignore (a 2nd endCall must not throw)
+  }
+  try {
+    ws?.close();
+  } catch {
+    /* already closed */
+  }
   els.startBtn.disabled = false;
   els.stopBtn.disabled = true;
   els.meterFill.style.width = "0%";

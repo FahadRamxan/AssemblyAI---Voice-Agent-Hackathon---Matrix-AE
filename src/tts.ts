@@ -34,8 +34,10 @@ async function* elevenLabsStream(
   lang: "en" | "ar",
   signal?: AbortSignal,
 ): AsyncGenerator<Uint8Array> {
+  // Encode the owner-supplied voice id — it's untrusted input in a URL path segment, so a
+  // crafted value (`../`, `?`, `&`) must not escape into a different path/query under our key.
   const url =
-    `https://api.elevenlabs.io/v1/text-to-speech/${cfg.voiceId}/stream` +
+    `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(cfg.voiceId)}/stream` +
     `?output_format=pcm_${TTS_SAMPLE_RATE}`;
   const res = await fetch(url, {
     method: "POST",
